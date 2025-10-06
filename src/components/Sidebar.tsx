@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,7 +16,6 @@ import {
   LogOut,
   Brain,
   Stethoscope,
-  ClipboardList,
   User,
   CalendarCheck,
   AlertTriangle,
@@ -36,6 +35,14 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { user, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkScreen = () => setIsMobile(window.innerWidth < 768);
+    checkScreen();
+    window.addEventListener("resize", checkScreen);
+    return () => window.removeEventListener("resize", checkScreen);
+  }, []);
 
   const getMenuItems = () => {
     const baseItems = [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }];
@@ -56,10 +63,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         ];
 
       case "financeiro":
-        return [
-          ...baseItems,
-          { id: "financeiro", label: "Financeiro", icon: DollarSign },
-        ];
+        return [...baseItems, { id: "financeiro", label: "Financeiro", icon: DollarSign }];
 
       case "agendamento":
         return [
@@ -80,9 +84,9 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
       case "paciente":
         return [
-          { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+          ...baseItems,
           { id: "meus-agendamentos", label: "Meus Agendamentos", icon: Calendar },
-          { id: "financeiro-paciente", label: "Financeiro", icon: DollarSign }, // 🔑 isolado
+          { id: "financeiro-paciente", label: "Financeiro", icon: DollarSign },
           { id: "meus-prontuarios", label: "Meus Prontuários", icon: FileText },
         ];
 
@@ -96,64 +100,74 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   return (
     <>
       {/* Botão Mobile */}
-      <div className="md:hidden fixed top-3 left-3 z-50">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="bg-white/90 shadow rounded-full h-9 w-9 p-0"
-        >
-          <Menu className="h-5 w-5 text-gray-700" />
-        </Button>
-      </div>
+      {isMobile && (
+        <div className="fixed top-3 left-3 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsOpen(!isOpen)}
+            className="bg-white shadow rounded-full h-10 w-10 p-0"
+          >
+            <Menu className="h-6 w-6 text-gray-700" />
+          </Button>
+        </div>
+      )}
 
       {/* Sidebar Desktop */}
-      <div
-        className={cn(
-          "hidden md:flex flex-col h-screen bg-white border-r shadow-lg transition-all duration-300",
-          isCollapsed ? "w-20" : "w-64"
-        )}
-      >
-        <Header collapsed={isCollapsed} />
-        <MenuList
-          menuItems={menuItems}
-          activeSection={activeSection}
-          onSectionChange={onSectionChange}
-          collapsed={isCollapsed}
-        />
-        <Footer user={user} logout={logout} collapsed={isCollapsed} />
-
-        {/* Colapso */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-20 bg-white border rounded-full p-1 shadow hover:bg-gray-100"
+      {!isMobile && (
+        <div
+          className={cn(
+            "hidden md:flex flex-col h-screen bg-white border-r shadow-lg transition-all duration-300",
+            isCollapsed ? "w-20" : "w-64"
+          )}
         >
-          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
-      </div>
-
-      {/* Sidebar Mobile */}
-      <div
-        className={cn(
-          "fixed inset-0 z-40 flex md:hidden transition-transform duration-300",
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="w-56 bg-white shadow-xl flex flex-col text-sm">
-          <Header collapsed={false} />
+          <Header collapsed={isCollapsed} />
           <MenuList
             menuItems={menuItems}
             activeSection={activeSection}
-            onSectionChange={(id) => {
-              onSectionChange(id);
-              setIsOpen(false);
-            }}
-            collapsed={false}
+            onSectionChange={onSectionChange}
+            collapsed={isCollapsed}
           />
-          <Footer user={user} logout={logout} collapsed={false} />
+          <Footer user={user} logout={logout} collapsed={isCollapsed} />
+
+          {/* Botão colapso */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="absolute -right-3 top-20 bg-white border rounded-full p-1 shadow hover:bg-gray-100"
+          >
+            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
-        <div className="flex-1 bg-black/20" onClick={() => setIsOpen(false)} />
-      </div>
+      )}
+
+      {/* Sidebar Mobile */}
+      {isMobile && (
+        <div
+          className={cn(
+            "fixed inset-0 z-40 flex md:hidden transition-transform duration-300",
+            isOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          <div className="w-72 bg-white shadow-xl flex flex-col text-base animate-slide-in">
+            <Header collapsed={false} />
+            <MenuList
+              menuItems={menuItems}
+              activeSection={activeSection}
+              onSectionChange={(id) => {
+                if (id === "agendamento" && window.innerWidth < 400) {
+                  alert("📱 Agendamento não disponível nesta tela. Use um tablet ou computador para visualizar melhor.");
+                  return;
+                }
+                onSectionChange(id);
+                setIsOpen(false);
+              }}
+              collapsed={false}
+            />
+            <Footer user={user} logout={logout} collapsed={false} />
+          </div>
+          <div className="flex-1 bg-black/50" onClick={() => setIsOpen(false)} />
+        </div>
+      )}
     </>
   );
 }
@@ -186,7 +200,7 @@ function MenuList({
             key={item.id}
             variant={activeSection === item.id ? "secondary" : "ghost"}
             className={cn(
-              "w-full justify-start h-10 text-sm transition-all duration-200",
+              "w-full justify-start h-11 text-base transition-all duration-200 rounded-md",
               activeSection === item.id
                 ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 border-l-4 border-l-blue-600 shadow"
                 : "hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50",
@@ -195,7 +209,7 @@ function MenuList({
             onClick={() => onSectionChange(item.id)}
           >
             <item.icon className="h-5 w-5" />
-            {!collapsed && <span className="ml-2">{item.label}</span>}
+            {!collapsed && <span className="ml-3">{item.label}</span>}
           </Button>
         ))}
       </div>
@@ -227,13 +241,13 @@ function Footer({
       <Button
         variant="ghost"
         className={cn(
-          "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors h-9 text-sm",
+          "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors h-10 text-base",
           collapsed && "justify-center"
         )}
         onClick={logout}
       >
         <LogOut className="h-4 w-4" />
-        {!collapsed && <span className="ml-1">Sair</span>}
+        {!collapsed && <span className="ml-2">Sair</span>}
       </Button>
     </div>
   );

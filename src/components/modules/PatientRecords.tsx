@@ -2,7 +2,14 @@
 
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useApp } from "@/contexts/AppContext";
 import { format } from "date-fns";
 
@@ -11,13 +18,23 @@ interface PatientRecordsProps {
 }
 
 export function PatientRecords({ patientId }: PatientRecordsProps) {
-  const { appointments, medicalRecords } = useApp();
+  const { appointments, medicalRecords, users } = useApp();
 
-  const patientAppointments = appointments.filter((apt) => apt.patient_id === patientId);
+  // Pega os agendamentos do paciente
+  const patientAppointments = appointments.filter(
+    (apt) => apt.patient_id === patientId
+  );
 
+  // Filtra os prontuários ligados a esses agendamentos
   const patientRecords = medicalRecords.filter((rec) =>
     patientAppointments.some((apt) => apt.id === rec.appointment_id)
   );
+
+  // Helper para buscar nome do médico
+  const getDoctorName = (doctor_id: string) => {
+    const doctor = users.find((u) => u.id === doctor_id && u.role === "medico");
+    return doctor ? doctor.name : "—";
+  };
 
   return (
     <Card>
@@ -31,21 +48,27 @@ export function PatientRecords({ patientId }: PatientRecordsProps) {
               <TableRow>
                 <TableHead>Data</TableHead>
                 <TableHead>Médico</TableHead>
-                <TableHead>Resumo</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead>Notas</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {patientRecords.map((rec) => (
                 <TableRow key={rec.id}>
-                  <TableCell>{format(new Date(rec.date), "dd/MM/yyyy")}</TableCell>
-                  <TableCell>{rec.doctorName}</TableCell>
-                  <TableCell>{rec.summary}</TableCell>
+                  <TableCell>
+                    {rec.date ? format(new Date(rec.date), "dd/MM/yyyy") : "—"}
+                  </TableCell>
+                  <TableCell>{getDoctorName(rec.doctor_id)}</TableCell>
+                  <TableCell>{rec.description || "—"}</TableCell>
+                  <TableCell>{rec.notes || "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         ) : (
-          <p className="text-gray-500 text-center py-6">Nenhum prontuário encontrado.</p>
+          <p className="text-gray-500 text-center py-6">
+            Nenhum prontuário encontrado.
+          </p>
         )}
       </CardContent>
     </Card>

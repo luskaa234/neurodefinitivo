@@ -43,6 +43,7 @@ import {
   Search,
   Filter,
   Printer,
+  Upload,
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { supabase } from "@/lib/supabase";
@@ -160,6 +161,44 @@ export function MedicalRecords() {
     setFilteredRecords(records);
   };
 
+  const importCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const rows = text.split("\n").slice(1); // ignora cabeçalho
+      const records = rows
+        .map((row) => row.split(","))
+        .filter((cols) => cols.length >= 5)
+        .map((cols) => ({
+          patient_id: cols[0].trim(),
+          doctor_id: cols[1].trim(),
+          date: cols[2].trim(),
+          diagnosis: cols[3].trim(),
+          treatment: cols[4].trim(),
+          notes: cols[5]?.trim() || null,
+        }));
+
+      if (records.length === 0) {
+        toast.error("CSV vazio ou inválido");
+        return;
+      }
+
+      const { error } = await supabase.from("medical_records").insert(records);
+      if (error) {
+        const msg = logSb("Erro ao importar CSV", error);
+        toast.error(`Erro ao importar: ${msg}`);
+        return;
+      }
+
+      toast.success("📂 CSV importado com sucesso!");
+      loadMedicalRecords();
+    } catch (err) {
+      toast.error("Erro ao processar CSV");
+    }
+  };
+
   const onSubmit = async (form: MedicalRecordFormData) => {
     try {
       const payload = {
@@ -263,9 +302,7 @@ export function MedicalRecords() {
         <h3>Tratamento</h3>
         <p>${record.treatment}</p>
         ${
-          record.notes
-            ? `<h3>Observações</h3><p>${record.notes}</p>`
-            : ""
+          record.notes ? `<h3>Observações</h3><p>${record.notes}</p>` : ""
         }
         <hr/>
         <p style="text-align:center; font-size: 12px; margin-top: 30px;">
@@ -362,6 +399,18 @@ export function MedicalRecords() {
             <Filter className="mr-2 h-4 w-4" /> Limpar
           </Button>
 
+          {/* Botão Importar CSV */}
+          <label className="flex items-center px-3 py-2 bg-gray-200 rounded cursor-pointer">
+            <Upload className="h-4 w-4 mr-2" />
+            Importar CSV
+            <input
+              type="file"
+              accept=".csv"
+              onChange={importCSV}
+              className="hidden"
+            />
+          </label>
+
           {/* Novo prontuário */}
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -379,8 +428,7 @@ export function MedicalRecords() {
                   Preencha os campos abaixo para registrar
                 </DialogDescription>
               </DialogHeader>
-
-              {/* Formulário */}
+              {/* Form */}
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -489,7 +537,7 @@ export function MedicalRecords() {
         </div>
       </div>
 
-      {/* Lista de prontuários */}
+      {/* Lista */}
       <Card>
         <CardHeader>
           <CardTitle>📋 Lista de Prontuários</CardTitle>
@@ -565,7 +613,7 @@ export function MedicalRecords() {
         </CardContent>
       </Card>
 
-      {/* Modal de visualização */}
+      {/* Modal visualizar */}
       <Dialog
         open={!!selectedRecord}
         onOpenChange={() => setSelectedRecord(null)}
@@ -579,9 +627,16 @@ export function MedicalRecords() {
           </DialogHeader>
           {selectedRecord && (
             <div className="space-y-4">
-              <p><strong>Paciente:</strong> {getPatientName(selectedRecord.patient_id)}</p>
-              <p><strong>Médico:</strong> {getDoctorName(selectedRecord.doctor_id)}</p>
-              <p><strong>Data:</strong> {new Date(selectedRecord.date).toLocaleDateString("pt-BR")}</p>
+              <p>
+                <strong>Paciente:</strong> {getPatientName(selectedRecord.patient_id)}
+              </p>
+              <p>
+                <strong>Médico:</strong> {getDoctorName(selectedRecord.doctor_id)}
+              </p>
+              <p>
+                <strong>Data:</strong>{" "}
+                {new Date(selectedRecord.date).toLocaleDateString("pt-BR")}
+              </p>
               <div>
                 <h3 className="font-semibold">Diagnóstico</h3>
                 <p>{selectedRecord.diagnosis}</p>
@@ -597,13 +652,22 @@ export function MedicalRecords() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => handlePrint(selectedRecord)}>
+                <Button
+                  variant="outline"
+                  onClick={() => handlePrint(selectedRecord)}
+                >
                   <Printer className="h-4 w-4 mr-2" /> Imprimir
                 </Button>
-                <Button variant="secondary" onClick={() => handleEdit(selectedRecord)}>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleEdit(selectedRecord)}
+                >
                   <Edit className="h-4 w-4 mr-2" /> Editar
                 </Button>
-                <Button variant="destructive" onClick={() => deleteMedicalRecord(selectedRecord)}>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteMedicalRecord(selectedRecord)}
+                >
                   <Trash2 className="h-4 w-4 mr-2" /> Excluir
                 </Button>
               </div>

@@ -76,23 +76,41 @@ export function ServiceManagement() {
   ];
 
   const onSubmit = async (data: ServiceFormData) => {
-    const success = await addService(data);
-    if (success) {
-      reset();
-      setIsDialogOpen(false);
-    }
+  const newService: Omit<Service, "id" | "created_at"> = {
+    name: data.name,                              // ✅ agora é obrigatório
+    description: data.description || "",          // opcional, mas garante string
+    price: Number(data.price),                    // garante número
+    duration: Number(data.duration),              // garante número
+    category: data.category,                      // ✅ obrigatório
+    is_active: data.is_active ?? true,            // default true
   };
 
-  const onSubmitEdit = async (data: ServiceFormData) => {
-    if (!editingService) return;
+  const success = await addService(newService);
+  if (success) {
+    reset();
+    setIsDialogOpen(false);
+  }
+};
 
-    const success = await updateService(editingService.id, data);
-    if (success) {
-      resetEdit();
-      setIsEditDialogOpen(false);
-      setEditingService(null);
-    }
+
+const onSubmitEdit = async (data: ServiceFormData) => {
+  if (!editingService) return;
+
+  const updatedService = {
+    ...data,
+    price: Number(data.price),
+    duration: Number(data.duration),
+    is_active: data.is_active ?? true,
   };
+
+  const success = await updateService(editingService.id, updatedService);
+  if (success) {
+    resetEdit();
+    setIsEditDialogOpen(false);
+    setEditingService(null);
+  }
+};
+
 
   const handleEdit = (service: Service) => {
     setEditingService(service);

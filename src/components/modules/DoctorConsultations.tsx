@@ -163,7 +163,7 @@ export function DoctorConsultations() {
                   </SelectTrigger>
                   <SelectContent>
                     {myAppointments
-                      .filter(apt => apt.status === 'confirmado' || apt.status === 'agendado')
+                      .filter(apt => apt.status === 'confirmado' || apt.status === 'pendente')
                       .map((appointment) => (
                       <SelectItem key={appointment.id} value={appointment.id}>
                         {getPatientName(appointment.patient_id)} - {new Date(appointment.date).toLocaleDateString('pt-BR')} às {appointment.time}
@@ -329,7 +329,7 @@ export function DoctorConsultations() {
                       <TableCell>
                         <Badge variant={
                           appointment.status === 'confirmado' ? 'default' :
-                          appointment.status === 'agendado' ? 'secondary' :
+                          appointment.status === 'pendente' ? 'secondary' :
                           appointment.status === 'realizado' ? 'outline' : 'destructive'
                         }>
                           {appointment.status}
@@ -395,7 +395,7 @@ export function DoctorConsultations() {
                       <TableCell>
                         <Badge variant={
                           appointment.status === 'confirmado' ? 'default' :
-                          appointment.status === 'agendado' ? 'secondary' : 'outline'
+                          appointment.status === 'pendente' ? 'secondary' : 'outline'
                         }>
                           {appointment.status}
                         </Badge>

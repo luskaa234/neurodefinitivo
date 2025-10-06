@@ -6,24 +6,24 @@ export const mockUsers: User[] = [
     name: 'Dr. João Silva',
     email: 'joao@neurointegrar.com',
     role: 'medico',
-    createdAt: new Date('2024-01-15'),
-    isActive: true
+    created_at: '2024-01-15T00:00:00.000Z',
+    is_active: true
   },
   {
     id: '2',
     name: 'Dra. Maria Santos',
     email: 'maria@neurointegrar.com',
     role: 'medico',
-    createdAt: new Date('2024-01-20'),
-    isActive: true
+    created_at: '2024-01-20T00:00:00.000Z',
+    is_active: true
   },
   {
     id: '3',
     name: 'Ana Costa',
     email: 'ana@neurointegrar.com',
     role: 'agendamento',
-    createdAt: new Date('2024-02-01'),
-    isActive: true
+    created_at: '2024-02-01T00:00:00.000Z',
+    is_active: true
   }
 ];
 
@@ -36,14 +36,14 @@ export const mockDoctors: Doctor[] = [
     crm: '12345-SP',
     specialty: 'Neurologia',
     phone: '(11) 99999-1111',
-    createdAt: new Date('2024-01-15'),
-    isActive: true,
+    created_at: '2024-01-15T00:00:00.000Z',
+    is_active: true,
     schedule: [
-      { dayOfWeek: 1, startTime: '08:00', endTime: '17:00', isAvailable: true },
-      { dayOfWeek: 2, startTime: '08:00', endTime: '17:00', isAvailable: true },
-      { dayOfWeek: 3, startTime: '08:00', endTime: '17:00', isAvailable: true },
-      { dayOfWeek: 4, startTime: '08:00', endTime: '17:00', isAvailable: true },
-      { dayOfWeek: 5, startTime: '08:00', endTime: '12:00', isAvailable: true }
+      { day_of_week: 1, start_time: '08:00', end_time: '17:00', is_available: true },
+      { day_of_week: 2, start_time: '08:00', end_time: '17:00', is_available: true },
+      { day_of_week: 3, start_time: '08:00', end_time: '17:00', is_available: true },
+      { day_of_week: 4, start_time: '08:00', end_time: '17:00', is_available: true },
+      { day_of_week: 5, start_time: '08:00', end_time: '12:00', is_available: true }
     ]
   },
   {
@@ -54,13 +54,13 @@ export const mockDoctors: Doctor[] = [
     crm: '67890-SP',
     specialty: 'Neuropsicologia',
     phone: '(11) 99999-2222',
-    createdAt: new Date('2024-01-20'),
-    isActive: true,
+    created_at: '2024-01-20T00:00:00.000Z',
+    is_active: true,
     schedule: [
-      { dayOfWeek: 1, startTime: '09:00', endTime: '18:00', isAvailable: true },
-      { dayOfWeek: 2, startTime: '09:00', endTime: '18:00', isAvailable: true },
-      { dayOfWeek: 3, startTime: '09:00', endTime: '18:00', isAvailable: true },
-      { dayOfWeek: 4, startTime: '09:00', endTime: '18:00', isAvailable: true }
+      { day_of_week: 1, start_time: '09:00', end_time: '18:00', is_available: true },
+      { day_of_week: 2, start_time: '09:00', end_time: '18:00', is_available: true },
+      { day_of_week: 3, start_time: '09:00', end_time: '18:00', is_available: true },
+      { day_of_week: 4, start_time: '09:00', end_time: '18:00', is_available: true }
     ]
   }
 ];
@@ -72,11 +72,11 @@ export const mockPatients: Patient[] = [
     email: 'carlos@email.com',
     role: 'paciente',
     cpf: '123.456.789-00',
-    birthDate: new Date('1985-03-15'),
+    birth_date: '1985-03-15',
     phone: '(11) 98888-1111',
     address: 'Rua das Flores, 123 - São Paulo/SP',
-    createdAt: new Date('2024-02-10'),
-    isActive: true,
+    created_at: '2024-02-10T00:00:00.000Z',
+    is_active: true,
     medicalRecord: [],
     appointments: []
   },
@@ -86,11 +86,11 @@ export const mockPatients: Patient[] = [
     email: 'fernanda@email.com',
     role: 'paciente',
     cpf: '987.654.321-00',
-    birthDate: new Date('1990-07-22'),
+    birth_date: '1990-07-22',
     phone: '(11) 98888-2222',
     address: 'Av. Paulista, 456 - São Paulo/SP',
-    createdAt: new Date('2024-02-15'),
-    isActive: true,
+    created_at: '2024-02-15T00:00:00.000Z',
+    is_active: true,
     medicalRecord: [],
     appointments: []
   },
@@ -100,11 +100,11 @@ export const mockPatients: Patient[] = [
     email: 'roberto@email.com',
     role: 'paciente',
     cpf: '456.789.123-00',
-    birthDate: new Date('1978-11-08'),
+    birth_date: '1978-11-08',
     phone: '(11) 98888-3333',
     address: 'Rua Augusta, 789 - São Paulo/SP',
-    createdAt: new Date('2024-02-20'),
-    isActive: true,
+    created_at: '2024-02-20T00:00:00.000Z',
+    is_active: true,
     medicalRecord: [],
     appointments: []
   }
@@ -113,47 +113,51 @@ export const mockPatients: Patient[] = [
 export const mockAppointments: Appointment[] = [
   {
     id: '1',
-    patientId: '1',
-    doctorId: '1',
-    date: new Date('2024-12-20'),
+    patient_id: '1',
+    doctor_id: '1',
+    date: '2024-12-20',
     time: '09:00',
     status: 'confirmado',
     type: 'Consulta Inicial',
     notes: 'Primeira consulta neurológica',
-    price: 300
+    price: 300,
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '2',
-    patientId: '2',
-    doctorId: '2',
-    date: new Date('2024-12-20'),
+    patient_id: '2',
+    doctor_id: '2',
+    date: '2024-12-20',
     time: '10:30',
     status: 'agendado',
     type: 'Avaliação Neuropsicológica',
     notes: 'Avaliação completa',
-    price: 450
+    price: 450,
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '3',
-    patientId: '3',
-    doctorId: '1',
-    date: new Date('2024-12-21'),
+    patient_id: '3',
+    doctor_id: '1',
+    date: '2024-12-21',
     time: '14:00',
     status: 'confirmado',
     type: 'Retorno',
     notes: 'Acompanhamento do tratamento',
-    price: 250
+    price: 250,
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '4',
-    patientId: '1',
-    doctorId: '2',
-    date: new Date('2024-12-22'),
+    patient_id: '1',
+    doctor_id: '2',
+    date: '2024-12-22',
     time: '11:00',
     status: 'agendado',
     type: 'Terapia',
     notes: 'Sessão de reabilitação',
-    price: 200
+    price: 200,
+    created_at: '2024-12-10T00:00:00.000Z'
   }
 ];
 
@@ -164,9 +168,10 @@ export const mockFinancialRecords: FinancialRecord[] = [
     amount: 300,
     description: 'Consulta - Carlos Oliveira',
     category: 'Consulta',
-    date: new Date('2024-12-15'),
-    appointmentId: '1',
-    status: 'pago'
+    date: '2024-12-15',
+    appointment_id: '1',
+    status: 'pago',
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '2',
@@ -174,9 +179,10 @@ export const mockFinancialRecords: FinancialRecord[] = [
     amount: 450,
     description: 'Avaliação - Fernanda Lima',
     category: 'Avaliação',
-    date: new Date('2024-12-16'),
-    appointmentId: '2',
-    status: 'pendente'
+    date: '2024-12-16',
+    appointment_id: '2',
+    status: 'pendente',
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '3',
@@ -184,8 +190,9 @@ export const mockFinancialRecords: FinancialRecord[] = [
     amount: 1200,
     description: 'Aluguel do consultório',
     category: 'Infraestrutura',
-    date: new Date('2024-12-01'),
-    status: 'pago'
+    date: '2024-12-01',
+    status: 'pago',
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '4',
@@ -193,9 +200,10 @@ export const mockFinancialRecords: FinancialRecord[] = [
     amount: 250,
     description: 'Retorno - Roberto Silva',
     category: 'Consulta',
-    date: new Date('2024-12-18'),
-    appointmentId: '3',
-    status: 'pago'
+    date: '2024-12-18',
+    appointment_id: '3',
+    status: 'pago',
+    created_at: '2024-12-10T00:00:00.000Z'
   },
   {
     id: '5',
@@ -203,7 +211,8 @@ export const mockFinancialRecords: FinancialRecord[] = [
     amount: 350,
     description: 'Material de escritório',
     category: 'Suprimentos',
-    date: new Date('2024-12-10'),
-    status: 'pago'
+    date: '2024-12-10',
+    status: 'pago',
+    created_at: '2024-12-10T00:00:00.000Z'
   }
 ];

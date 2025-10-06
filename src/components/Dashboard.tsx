@@ -49,8 +49,9 @@ export function Dashboard() {
     : 0;
 
   const pendingAppointments = Array.isArray(appointments) 
-    ? appointments.filter(apt => apt.status === 'agendado')
-    : [];
+  ? appointments.filter(apt => apt.status === "pendente")
+  : [];
+
   
   const confirmedAppointments = Array.isArray(appointments) 
     ? appointments.filter(apt => apt.status === 'confirmado').length 
@@ -388,7 +389,7 @@ export function Dashboard() {
                       }>
                         {appointment.status}
                       </Badge>
-                      {appointment.status === 'agendado' && (
+                      {appointment.status === 'pendente' && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -550,7 +551,7 @@ export function Dashboard() {
                   </div>
                   <Badge variant={
                     appointment.status === 'confirmado' ? 'default' :
-                    appointment.status === 'agendado' ? 'secondary' :
+                    appointment.status === 'pendente' ? 'secondary' :
                     appointment.status === 'realizado' ? 'outline' : 'destructive'
                   }>
                     {appointment.status}

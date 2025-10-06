@@ -12,6 +12,8 @@ export interface User {
   address?: string;
   crm?: string;
   specialty?: string;
+  password?: string;
+
 }
 
 export interface Doctor extends User {

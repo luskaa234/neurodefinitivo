@@ -27,6 +27,10 @@ import {
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 
+// ❌ REMOVIDO o import circular de AgendamentoDashboard
+
+
+
 export function AgendamentoDashboard() {
   const { appointments, patients, doctors, updateAppointment } = useApp();
   const [isAlertsDialogOpen, setIsAlertsDialogOpen] = useState(false);
@@ -54,7 +58,7 @@ export function AgendamentoDashboard() {
     return aptDate >= today && aptDate <= thisWeek;
   });
 
-  const pendingConfirmations = appointments.filter(apt => apt.status === 'agendado');
+  const pendingConfirmations = appointments.filter(apt => apt.status ===  'pendente');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmado');
   const canceledToday = appointments.filter(apt => 
     apt.status === 'cancelado' && 
@@ -138,7 +142,8 @@ export function AgendamentoDashboard() {
   };
 
   const sendBulkReminders = async () => {
-    const tomorrowPending = tomorrowAppointments.filter(apt => apt.status === 'agendado');
+    const tomorrowPending = tomorrowAppointments.filter(apt => apt.status === "pendente"
+);
     
     if (tomorrowPending.length === 0) {
       toast.error('Nenhuma consulta pendente para amanhã');
@@ -255,7 +260,7 @@ export function AgendamentoDashboard() {
                       <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
                       <Badge variant={
                         appointment.status === 'confirmado' ? 'default' :
-                        appointment.status === 'agendado' ? 'secondary' : 'outline'
+                        appointment.status === "pendente" ? 'secondary' : 'outline'
                       }>
                         {appointment.status}
                       </Badge>
@@ -496,7 +501,7 @@ export function AgendamentoDashboard() {
                 <div className="flex items-center space-x-2">
                   <Badge variant={
                     appointment.status === 'confirmado' ? 'default' :
-                    appointment.status === 'agendado' ? 'secondary' :
+                    appointment.status === "pendente" ? "secondary" : 
                     appointment.status === 'realizado' ? 'outline' : 'destructive'
                   }>
                     {appointment.status}

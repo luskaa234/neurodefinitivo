@@ -7,3 +7,10 @@ coverage/
 .env.local
 npm-debug.log*
 yarn-error.log*
+node_modules/
+.next/
+.env.local
+.env
+dist/
+coverage/
+.DS_Store

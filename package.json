@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -52,7 +52,9 @@
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
+    "next-pwa": "^5.6.0",
     "next-themes": "^0.4.4",
+    "path-browserify": "^1.0.1",
     "react": "^19",
     "react-day-picker": "8.10.1",
     "react-dom": "^19",
@@ -64,6 +66,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
+    "workbox-build": "^7.3.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -83,7 +86,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/luquinhasss42/saas-3.git"
+    "url": "https://github.com/luquinhasss42/saasneuro.git"
   },
-  "homepage": "https://github.com/luquinhasss42/saas-3#readme"
+  "homepage": "https://github.com/luquinhasss42/saasneuro#readme"
 }

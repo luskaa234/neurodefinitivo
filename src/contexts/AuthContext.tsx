@@ -1,14 +1,16 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
+// 🔹 Tipo do usuário
 interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'financeiro' | 'agendamento' | 'medico' | 'paciente';
+  role: "admin" | "financeiro" | "agendamento" | "medico" | "paciente";
   avatar_url?: string;
   created_at: string;
   is_active: boolean;
@@ -18,116 +20,141 @@ interface User {
   address?: string;
   crm?: string;
   specialty?: string;
+  password?: string;
 }
 
+// 🔹 Tipo do contexto
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
+  loginAsUser: (userId: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
 
+// 🔹 Criação do contexto
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
+  // ✅ Carrega usuário salvo ao abrir o app
   useEffect(() => {
-    checkStoredUser();
-  }, []);
-
-  const checkStoredUser = () => {
     try {
-      const storedUser = localStorage.getItem('neuro-integrar-user');
-      if (storedUser) {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-      }
+      const storedUser = localStorage.getItem("neuro-integrar-user");
+      if (storedUser) setUser(JSON.parse(storedUser));
     } catch (error) {
-      console.error('Erro ao verificar usuário:', error);
-      localStorage.removeItem('neuro-integrar-user');
+      console.error("Erro ao carregar usuário:", error);
+      localStorage.removeItem("neuro-integrar-user");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
+  // ✅ Login normal (com email e senha)
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
 
-      // Buscar usuário diretamente na tabela users (SEM usar Supabase Auth)
       const { data: userData, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
+        .from("users")
+        .select("*")
+        .eq("email", email)
         .single();
 
       if (error || !userData) {
-        toast.error('Email não encontrado');
+        toast.error("E-mail não encontrado");
         return false;
       }
 
       if (!userData.is_active) {
-        toast.error('Usuário inativo');
+        toast.error("Usuário inativo");
         return false;
       }
 
-      // Verificação simples de senha (contém "neuro")
-      if (!password.toLowerCase().includes('neuro')) {
-        toast.error('Senha incorreta');
+      if (!userData.password || userData.password !== password) {
+        toast.error("Senha incorreta");
         return false;
       }
 
-      // Criar sessão local
-      const userSession: User = {
-        id: userData.id,
-        name: userData.name,
-        email: userData.email,
-        role: userData.role,
-        avatar_url: userData.avatar_url,
-        created_at: userData.created_at,
-        is_active: userData.is_active,
-        phone: userData.phone,
-        cpf: userData.cpf,
-        birth_date: userData.birth_date,
-        address: userData.address,
-        crm: userData.crm,
-        specialty: userData.specialty
-      };
-
-      localStorage.setItem('neuro-integrar-user', JSON.stringify(userSession));
+      const userSession: User = { ...userData };
+      localStorage.setItem("neuro-integrar-user", JSON.stringify(userSession));
       setUser(userSession);
-      
-      toast.success(`Bem-vindo, ${userData.name}!`);
-      return true;
 
+      toast.success(`Bem-vindo, ${userData.name}!`);
+      router.push("/");
+      return true;
     } catch (error) {
-      console.error('Erro no login:', error);
-      toast.error('Erro interno');
+      console.error("Erro no login:", error);
+      toast.error("Erro interno ao tentar fazer login");
       return false;
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ✅ Login direto por ID (para “Entrar como usuário”)
+  const loginAsUser = async (userId: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+
+      const { data: userData, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+      if (error || !userData) {
+        toast.error("Usuário não encontrado");
+        return false;
+      }
+
+      if (!userData.is_active) {
+        toast.error("Usuário inativo");
+        return false;
+      }
+
+      const userSession: User = { ...userData };
+      localStorage.setItem("neuro-integrar-user", JSON.stringify(userSession));
+      setUser(userSession);
+
+      toast.success(`Logado como ${userData.name}`);
+      router.push("/");
+
+      return true;
+    } catch (error) {
+      console.error("Erro ao logar como usuário:", error);
+      toast.error("Erro ao tentar logar como usuário");
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Logout
   const logout = async () => {
-    localStorage.removeItem('neuro-integrar-user');
+    localStorage.removeItem("neuro-integrar-user");
     setUser(null);
-    toast.success('Logout realizado!');
+    toast.success("Logout realizado com sucesso!");
+    router.push("/");
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{ user, login, loginAsUser, logout, isLoading }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
+// ✅ Hook para consumir o contexto
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

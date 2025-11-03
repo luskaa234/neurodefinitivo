@@ -2,23 +2,53 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import {
-  UserPlus, Edit, Trash2, Copy, Eye, Users, UserCheck, UserX, Activity, Upload, Download
+  Eye,
+  EyeOff,
+  UserPlus,
+  Edit,
+  Trash2,
+  Copy,
+  Users,
+  UserCheck,
+  UserX,
+  Activity,
+  Upload,
+  Download,
+  Clipboard,
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { User } from "@/types";
@@ -27,11 +57,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 
+const EMAIL_DOMAIN = "sistema.com"; // <--- ajuste aqui para seu domínio real
+
 const userSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   role: z.enum(["admin", "financeiro", "agendamento", "medico", "paciente"]),
   email: z.string().email("Email inválido").optional(),
   is_active: z.boolean().optional(),
+  password: z.string().optional(),
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -46,46 +79,51 @@ export function UserManagement() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCredsOpen, setIsCredsOpen] = useState(false);
-  const [isBulkCredsOpen, setIsBulkCredsOpen] = useState(false);
-  const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false); // NOVO: confirmar deleção em massa
 
   // seleção
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
+  // senha show/hidden
+  const [showPassword, setShowPassword] = useState(false);
+  const [showViewPassword, setShowViewPassword] = useState(false);
+
   // filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState<"todos" | User["role"]>("todos");
-  const [filterStatus, setFilterStatus] = useState<"todos" | "ativos" | "inativos">("todos");
+  const [filterStatus, setFilterStatus] = useState<
+    "todos" | "ativos" | "inativos"
+  >("todos");
 
   // credenciais geradas
   const [generatedLogin, setGeneratedLogin] = useState<Cred | null>(null);
-  const [bulkCreds, setBulkCreds] = useState<Cred[]>([]);
 
-  // import/export
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [deletingMany, setDeletingMany] = useState(false); // NOVO: estado de loading da deleção em massa
-
-  // ----- helpers -----
+  // UI helpers
   const getRoleLabel = (role: string) => {
-    const labels = {
+    const labels: Record<string, string> = {
       admin: "Administrador",
       financeiro: "Financeiro",
       agendamento: "Agendamento",
       medico: "Médico",
       paciente: "Paciente",
     };
-    return labels[role as keyof typeof labels] || role;
+    return labels[role] || role;
   };
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
-      case "admin": return "destructive";
-      case "financeiro": return "default";
-      case "agendamento": return "secondary";
-      case "medico": return "outline";
-      case "paciente": return "secondary";
-      default: return "outline";
+      case "admin":
+        return "destructive";
+      case "financeiro":
+        return "default";
+      case "agendamento":
+        return "secondary";
+      case "medico":
+        return "outline";
+      case "paciente":
+        return "secondary";
+      default:
+        return "outline";
     }
   };
 
@@ -93,441 +131,258 @@ export function UserManagement() {
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
   const isEmailInUse = (email: string, excludeId?: string) =>
-    users.some(u => u.email.toLowerCase() === email.toLowerCase() && u.id !== excludeId);
+    users.some(
+      (u) => (u.email || "").toLowerCase() === email.toLowerCase() && u.id !== excludeId
+    );
 
-  const normalizeRoleToKey = (r: string): User["role"] | null => {
-    const t = normalize(r).trim();
-    if (["admin", "administrador"].includes(t)) return "admin";
-    if (["financeiro"].includes(t)) return "financeiro";
-    if (["agendamento"].includes(t)) return "agendamento";
-    if (["medico", "médico"].includes(t)) return "medico";
-    if (["paciente"].includes(t)) return "paciente";
-    return null;
-  };
-
-  // Gera email único com base no primeiro + segundo nome; adiciona sufixo se já existir
-  const generateUniqueEmail = (fullName: string, usedEmails: Set<string>) => {
-    const parts = normalize(fullName).trim().split(/\s+/);
-    const first = (parts[0] || "usuario").replace(/[^a-z0-9]/g, "");
-    const second = (parts[1] || "").replace(/[^a-z0-9]/g, "");
-    const base = `${first}${second}` || "usuario";
-    const domain = "@neurointegrar.com";
-
-    let candidate = base;
-    let email = `${candidate}${domain}`;
-    let i = 1;
-    while (usedEmails.has(email)) {
-      candidate = `${base}${i++}`;
-      email = `${candidate}${domain}`;
-    }
-    usedEmails.add(email);
-    return email;
-  };
-
-  // senha simples: primeiro nome + 4 dígitos
-  const generatePassword = (fullName: string) => {
-    const first = (normalize(fullName).trim().split(/\s+/)[0] || "usuario").replace(/[^a-z0-9]/g, "");
+  const generatePassword = (name: string) => {
+    const first = normalize(name).split(" ")[0] || "user";
     const rnd = Math.floor(1000 + Math.random() * 9000);
     return `${first}${rnd}`;
   };
 
-  // ----- forms -----
-  // criar
+  // gera email base a partir do nome: primeiro.sobrenome@domain
+  const generateEmailFromName = (name: string) => {
+    const parts = normalize(name)
+      .replace(/[^a-z\s]/g, "")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parts.length === 0) return `user@${EMAIL_DOMAIN}`;
+    if (parts.length === 1) return `${parts[0]}@${EMAIL_DOMAIN}`;
+    const first = parts[0];
+    const last = parts[parts.length - 1];
+    let base = `${first}.${last}`.replace(/\.+/g, ".");
+    base = base.replace(/(^\.)|(\.$)/g, "");
+    // garantir unicidade adicionando sufixo numérico se necessário
+    let candidate = `${base}@${EMAIL_DOMAIN}`;
+    let i = 1;
+    while (isEmailInUse(candidate)) {
+      i += 1;
+      candidate = `${base}${i}@${EMAIL_DOMAIN}`;
+      if (i > 1000) break;
+    }
+    return candidate;
+  };
+
+  // forms
   const {
     register: registerCreate,
     handleSubmit: handleSubmitCreate,
     setValue: setValueCreate,
     reset: resetCreate,
-    formState: { isSubmitting: creating }
+    watch: watchCreate,
+    formState: { isSubmitting: creating },
   } = useForm<UserFormData>({ resolver: zodResolver(userSchema) });
 
-  // editar
   const {
     register: registerEdit,
     handleSubmit: handleSubmitEdit,
     setValue: setValueEdit,
     reset: resetEdit,
-    formState: { isSubmitting: savingEdit }
+    watch: watchEdit,
+    formState: { isSubmitting: savingEdit },
   } = useForm<UserFormData>({ resolver: zodResolver(userSchema) });
 
-  // ----- filtros -----
-  const filteredUsers = useMemo(() => {
-    let data = [...users];
-
-    if (filterRole !== "todos") data = data.filter(u => u.role === filterRole);
-    if (filterStatus === "ativos") data = data.filter(u => u.is_active);
-    if (filterStatus === "inativos") data = data.filter(u => !u.is_active);
-
-    if (searchTerm.trim()) {
-      const t = searchTerm.toLowerCase();
-      data = data.filter(u =>
-        u.name.toLowerCase().includes(t) || u.email.toLowerCase().includes(t)
-      );
+  // quando abrir criar, reset e preenche email automaticamente ao digitar nome
+  useEffect(() => {
+    if (isCreateOpen) {
+      resetCreate({ name: "", email: "", role: "paciente", is_active: true });
     }
-    return data;
-  }, [users, filterRole, filterStatus, searchTerm]);
+  }, [isCreateOpen, resetCreate]);
 
-  // ----- stats -----
-  const stats = useMemo(() => ({
-    total: users.length,
-    active: users.filter(u => u.is_active).length,
-    inactive: users.filter(u => !u.is_active).length,
-    doctors: users.filter(u => u.role === "medico").length,
-  }), [users]);
-
-  // ----- actions -----
-  // Criar usuário
-  const onCreate = async (data: UserFormData) => {
-    const used = new Set(users.map(u => u.email.toLowerCase()));
-    const email = generateUniqueEmail(data.name, used);
-    const password = generatePassword(data.name);
-
-    const newUser: Omit<User, "id" | "created_at"> = {
-      name: data.name,
-      email,
-      role: data.role,
-      is_active: true,
-      phone: "",
-      cpf: "",
-      crm: "",
-      specialty: "",
-    };
-
-    try {
-      const ok = await addUser(newUser);
-      if (ok) {
-        setGeneratedLogin({ name: newUser.name, role: newUser.role, email, password });
-        setIsCredsOpen(true);
-        toast.success("Usuário criado com sucesso!");
-        resetCreate();
-        setIsCreateOpen(false);
-      }
-    } catch (e: any) {
-      if (String(e?.status || e).includes("409")) {
-        toast.error("Conflito de email (já existe). Tente novamente.");
-      } else {
-        toast.error("Erro ao criar usuário.");
-      }
-      console.error(e);
+  // observa nome no form de criação para atualizar preview do email automaticamente
+  const createName = watchCreate("name") || "";
+  useEffect(() => {
+    if (!createName) return;
+    const generated = generateEmailFromName(createName);
+    // só preenche o campo email se o usuário ainda não editou manualmente
+    const currentEmail = (watchCreate("email") || "").trim();
+    if (!currentEmail || currentEmail === "" || currentEmail.endsWith(`@${EMAIL_DOMAIN}`)) {
+      setValueCreate("email", generated);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createName]);
+
+  // efeito: quando abrir editar, popular valores no form
+  useEffect(() => {
+    if (isEditOpen && editingUser) {
+      setValueEdit("name", editingUser.name);
+      setValueEdit("email", editingUser.email || "");
+      setValueEdit("role", editingUser.role as any);
+      setValueEdit("is_active", !!editingUser.is_active);
+      setShowPassword(false);
+    } else if (!isEditOpen) {
+      resetEdit();
+      setEditingUser(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditOpen, editingUser]);
+
+  // abrir modal visualizar
+  const openView = (user: User) => {
+    setSelectedUser(user);
+    setShowViewPassword(false);
+    setIsViewOpen(true);
   };
 
-  // Abrir modal de editar
-  const onOpenEdit = (u: User) => {
-    setEditingUser(u);
-    setValueEdit("name", u.name);
-    setValueEdit("email", u.email);
-    setValueEdit("role", u.role);
-    setValueEdit("is_active", u.is_active);
+  // abrir modal editar
+  const openEdit = (user: User) => {
+    setEditingUser(user);
     setIsEditOpen(true);
   };
 
-  // Editar usuário
+  // copiar para clipboard com toast
+  const copyToClipboard = async (text: string, label = "Texto copiado") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(label);
+    } catch {
+      toast.error("Erro ao copiar.");
+    }
+  };
+
+  // criar usuário
+  const onCreate = async (data: UserFormData) => {
+    try {
+      // se email vazio, gerar
+      let email = data.email && data.email.trim() !== "" ? data.email.trim() : generateEmailFromName(data.name);
+      // se email já em uso, garantir suffix
+      if (isEmailInUse(email)) {
+        // gera baseado em nome com sufixo incremental (a função generateEmailFromName já cuida, mas reafirmamos)
+        email = generateEmailFromName(data.name);
+      }
+
+      const password = generatePassword(data.name);
+
+      const newUser: Omit<User, "id" | "created_at"> = {
+        name: data.name,
+        email,
+        role: data.role,
+        is_active: data.is_active ?? true,
+        phone: "",
+        cpf: "",
+        crm: "",
+        specialty: "",
+      } as any;
+
+      // Tenta enviar senha também; se sua addUser não aceitar senha, ajuste lá.
+      let ok = false;
+      try {
+        // @ts-ignore - chamada flexível para diferentes assinaturas
+        ok = await addUser(newUser, password);
+      } catch {
+        // tenta sem senha
+        // @ts-ignore
+        ok = await addUser(newUser);
+      }
+
+      if (ok) {
+        setGeneratedLogin({
+          name: newUser.name,
+          role: newUser.role,
+          email: newUser.email,
+          password,
+        });
+        setIsCredsOpen(true);
+        setIsCreateOpen(false);
+        toast.success("Usuário criado com sucesso!");
+      } else {
+        toast.error("Falha ao criar usuário.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao criar usuário.");
+    }
+  };
+
+  // editar usuário
   const onEdit = async (data: UserFormData) => {
     if (!editingUser) return;
-
-    if (data.email && isEmailInUse(data.email, editingUser.id)) {
-      toast.error("Este e-mail já está em uso por outro usuário.");
-      return;
-    }
-
     try {
-      const ok = await updateUser(editingUser.id, {
+      // valida email único se alterado
+      if (data.email && data.email.trim() !== "" && isEmailInUse(data.email.trim(), editingUser.id)) {
+        toast.error("Email já está em uso por outro usuário.");
+        return;
+      }
+
+      const payload: Partial<User> = {
         name: data.name,
         email: data.email,
         role: data.role,
         is_active: data.is_active,
-      });
+      } as any;
+
+      if (data.password && data.password.trim() !== "") {
+        (payload as any).password = data.password;
+      }
+
+      const ok = await updateUser(editingUser.id, payload);
       if (ok) {
         toast.success("Usuário atualizado com sucesso!");
         setIsEditOpen(false);
         setEditingUser(null);
-        resetEdit();
-      }
-    } catch (e: any) {
-      if (String(e?.status || e).includes("409")) {
-        toast.error("Conflito de e-mail ao salvar. Escolha outro e-mail.");
       } else {
-        toast.error("Erro ao atualizar usuário.");
+        toast.error("Falha ao atualizar usuário.");
       }
-      console.error(e);
-    }
-  };
-
-  // Excluir (individual)
-  const onDelete = async (u: User) => {
-    if (!window.confirm(`Deseja realmente excluir ${u.name}?`)) return;
-    try {
-      const ok = await deleteUser(u.id);
-      if (ok) toast.success("Usuário excluído!");
     } catch (e) {
-      toast.error("Erro ao excluir usuário.");
       console.error(e);
+      toast.error("Erro ao salvar alterações.");
     }
   };
 
-  // Copiar credenciais (modal individual)
-  const copyCreds = () => {
-    if (!generatedLogin) return;
-    const { name, role, email, password } = generatedLogin;
-    const text = `👤 Nome: ${name}
-🔑 Tipo de login: ${getRoleLabel(role)}
-📧 Email: ${email}
-🔒 Senha: ${password}`;
-    navigator.clipboard.writeText(text);
-    toast.success("Credenciais copiadas!");
-  };
-
-  // --------- IMPORT / EXPORT CSV ----------
-  const triggerImport = () => fileRef.current?.click();
-
-  // parser simples (aceita vírgula ou ponto e vírgula; com ou sem header)
-  const parseCSV = (raw: string): Array<{ name: string; role: string }> => {
-    const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-    const lines = text.split("\n").filter(Boolean);
-    if (lines.length === 0) return [];
-
-    const splitLine = (line: string) => {
-      if (line.includes(";") && !line.includes(",")) return line.split(";").map(s => s.trim());
-      return line.split(",").map(s => s.trim());
-    };
-
-    const header = splitLine(lines[0]).map(normalize);
-    let startIdx = 0;
-    let idxName = -1, idxRole = -1;
-
-    if (header.some(h => ["name", "nome"].includes(h)) || header.includes("role")) {
-      idxName = header.findIndex(h => ["name", "nome"].includes(h));
-      idxRole = header.findIndex(h => ["role", "perfil", "tipo", "funcao", "função"].includes(h));
-      startIdx = 1;
-    } else {
-      idxName = 0;
-      idxRole = 1;
-      startIdx = 0;
-    }
-
-    const rows: Array<{ name: string; role: string }> = [];
-    for (let i = startIdx; i < lines.length; i++) {
-      const cols = splitLine(lines[i]);
-      const name = (cols[idxName] || "").trim();
-      const role = (cols[idxRole] || "").trim();
-      if (!name || !role) continue;
-      rows.push({ name, role });
-    }
-    return rows;
-  };
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // reset para permitir reimport
-    if (!file) return;
-
+  // deletar usuário
+  const handleDelete = async (id: string) => {
     try {
-      const text = await file.text();
-      const rows = parseCSV(text);
-      if (rows.length === 0) {
-        toast.error("CSV vazio ou inválido. Use colunas: name,role");
-        return;
-      }
-
-      const usedEmails = new Set(users.map(u => u.email.toLowerCase()));
-      const createdCreds: Cred[] = [];
-      let createdCount = 0;
-      let skippedCount = 0;
-
-      for (const row of rows) {
-        const roleKey = normalizeRoleToKey(row.role);
-        if (!roleKey) {
-          skippedCount++;
-          continue;
-        }
-
-        const email = generateUniqueEmail(row.name, usedEmails);
-        const password = generatePassword(row.name);
-
-        const newUser: Omit<User, "id" | "created_at"> = {
-          name: row.name,
-          email,
-          role: roleKey,
-          is_active: true,
-          phone: "",
-          cpf: "",
-          crm: "",
-          specialty: "",
-        };
-
-        try {
-          const ok = await addUser(newUser);
-          if (ok) {
-            createdCreds.push({
-              name: newUser.name,
-              role: newUser.role,
-              email,
-              password,
-            });
-            createdCount++;
-          }
-        } catch {
-          skippedCount++;
-        }
-      }
-
-      if (createdCreds.length) {
-        setBulkCreds(createdCreds);
-        setIsBulkCredsOpen(true);
-      }
-
-      if (createdCount > 0) toast.success(`${createdCount} usuário(s) importado(s) com sucesso.`);
-      if (skippedCount > 0) toast.message(`${skippedCount} linha(s) ignorada(s) (perfil inválido ou erro).`);
-    } catch (err) {
-      console.error(err);
-      toast.error("Falha ao ler o arquivo CSV.");
-    }
-  };
-
-  const exportCSV = (data: User[]) => {
-    const header = ["name", "email", "role", "status", "created_at"];
-    const rows = data.map(u => [
-      `"${u.name.replace(/"/g, '""')}"`,
-      `"${u.email.replace(/"/g, '""')}"`,
-      `"${u.role}"`,
-      `"${u.is_active ? "ativo" : "inativo"}"`,
-      `"${new Date(u.created_at).toISOString()}"`
-    ].join(","));
-    const csv = [header.join(","), ...rows].join("\r\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `usuarios_export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // --------- APAGAR TUDO (TODOS ou FILTRADOS) ----------
-  const deleteMany = async (list: User[]) => {
-    if (list.length === 0) {
-      toast.message("Nada para apagar.");
-      return;
-    }
-    setDeletingMany(true);
-    try {
-      const results = await Promise.allSettled(list.map(u => deleteUser(u.id)));
-      const ok = results.filter(r => r.status === "fulfilled").length;
-      const fail = results.length - ok;
-      if (ok > 0) toast.success(`${ok} usuário(s) apagado(s).`);
-      if (fail > 0) toast.error(`${fail} falha(s) ao apagar.`);
+      const ok = await deleteUser(id);
+      if (ok) toast.success("Usuário removido.");
+      else toast.error("Erro ao remover usuário.");
     } catch (e) {
-      toast.error("Erro na deleção em massa.");
       console.error(e);
-    } finally {
-      setDeletingMany(false);
-      setIsDeleteAllOpen(false);
+      toast.error("Erro ao remover usuário.");
     }
   };
 
-  // ----- UI -----
+  // filtered users
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (filterRole !== "todos" && u.role !== filterRole) return false;
+      if (filterStatus === "ativos" && !u.is_active) return false;
+      if (filterStatus === "inativos" && u.is_active) return false;
+      if (!searchTerm) return true;
+      const q = normalize(searchTerm);
+      return (
+        normalize(u.name).includes(q) ||
+        (u.email && normalize(u.email).includes(q)) ||
+        (u.phone && normalize(u.phone).includes(q))
+      );
+    });
+  }, [users, filterRole, filterStatus, searchTerm]);
+
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Gestão de Usuários</h1>
-          <p className="text-gray-500">Controle total de usuários, papéis e acessos</p>
+      {/* Cabeçalho / controles */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setIsCreateOpen(true)} variant="default">
+            <UserPlus className="mr-2 h-4 w-4" /> Novo Usuário
+          </Button>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={triggerImport}>
-            <Upload className="h-4 w-4 mr-2" />
-            Importar CSV
-          </Button>
-          <input
-            type="file"
-            ref={fileRef}
-            accept=".csv"
-            className="hidden"
-            onChange={handleImportFile}
-          />
-
-          <Button variant="outline" onClick={() => exportCSV(filteredUsers)}>
-            <Download className="h-4 w-4 mr-2" />
-            Exportar CSV
-          </Button>
-
-          {/* NOVO: Apagar Tudo (abre diálogo de confirmação) */}
-          <Button
-            variant="destructive"
-            onClick={() => setIsDeleteAllOpen(true)}
-            disabled={users.length === 0}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Apagar Tudo
-          </Button>
-
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Novo Usuário
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg bg-white rounded-2xl border border-gray-100 shadow-2xl">
-              <DialogHeader>
-                <DialogTitle className="text-indigo-700 text-2xl font-semibold text-center">
-                  Criar Novo Usuário
-                </DialogTitle>
-                <DialogDescription className="text-center">
-                  Informe o nome e o tipo. O e-mail e a senha serão gerados automaticamente.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmitCreate(onCreate)} className="space-y-5 mt-2">
-                <div className="space-y-2">
-                  <Label>Nome completo</Label>
-                  <Input placeholder="Ex: João Silva" {...registerCreate("name")} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Tipo de usuário</Label>
-                  <Select onValueChange={(v) => setValueCreate("role", v as any)}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="financeiro">Financeiro</SelectItem>
-                      <SelectItem value="agendamento">Agendamento</SelectItem>
-                      <SelectItem value="medico">Médico</SelectItem>
-                      <SelectItem value="paciente">Paciente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="pt-3">
-                  <Button type="submit" disabled={creating} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-                    {creating ? "Criando..." : "Criar Usuário"}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
-        <div className="w-full md:w-[38%]">
-          <Label>Pesquisar</Label>
+        <div className="flex items-center gap-3">
           <Input
-            placeholder="Buscar por nome ou email..."
-            className="mt-1"
+            placeholder="Pesquisar..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-        </div>
-
-        <div className="w-full md:w-[28%]">
-          <Label>Filtrar por tipo</Label>
-          <Select value={filterRole} onValueChange={(v) => setFilterRole(v as any)}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Todos" /></SelectTrigger>
+          <Select
+            value={filterRole}
+            onValueChange={(v) =>
+              setFilterRole(v as "todos" | User["role"])
+            }
+          >
+            <SelectTrigger className="min-w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="admin">Administrador</SelectItem>
@@ -537,12 +392,16 @@ export function UserManagement() {
               <SelectItem value="paciente">Paciente</SelectItem>
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="w-full md:w-[28%]">
-          <Label>Status</Label>
-          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Todos" /></SelectTrigger>
+          <Select
+            value={filterStatus}
+            onValueChange={(v) =>
+              setFilterStatus(v as "todos" | "ativos" | "inativos")
+            }
+          >
+            <SelectTrigger className="min-w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="ativos">Ativos</SelectItem>
@@ -552,107 +411,115 @@ export function UserManagement() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-none shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-indigo-800">Total</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-indigo-700">{stats.total}</span>
-            <Users className="h-6 w-6 text-indigo-700" />
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-none shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-green-800">Ativos</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-green-700">{stats.active}</span>
-            <UserCheck className="h-6 w-6 text-green-700" />
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-none shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-red-800">Inativos</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-red-700">{stats.inactive}</span>
-            <UserX className="h-6 w-6 text-red-700" />
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-none shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-purple-800">Médicos</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-purple-700">{stats.doctors}</span>
-            <Activity className="h-6 w-6 text-purple-700" />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabela */}
-      <Card className="border-gray-200 shadow-md">
+      {/* Tabela de usuários */}
+      <Card>
         <CardHeader>
-          <CardTitle>Lista de Usuários</CardTitle>
-          <CardDescription>Visualize, edite ou remova usuários</CardDescription>
+          <CardTitle>Usuários</CardTitle>
+          <CardDescription>Lista de usuários do sistema</CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredUsers.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">Nenhum usuário encontrado.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-40">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((u) => (
-                    <TableRow key={u.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell>{u.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={getRoleBadgeVariant(u.role)}>{getRoleLabel(u.role)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={u.is_active ? "default" : "destructive"}>
-                          {u.is_active ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => { setSelectedUser(u); setIsViewOpen(true); }}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => onOpenEdit(u)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => onDelete(u)}>
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>{u.name}</TableCell>
+                  <TableCell>{u.email}</TableCell>
+                  <TableCell>
+                    <Badge variant={getRoleBadgeVariant(u.role)}>
+                      {getRoleLabel(u.role)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{u.is_active ? "Ativo" : "Inativo"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => openView(u)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(u.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {filteredUsers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">
+                    Nenhum usuário encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
       {/* Modal: Visualizar */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+      <Dialog open={isViewOpen} onOpenChange={(open) => setIsViewOpen(open)}>
         <DialogContent className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">Detalhes do Usuário</DialogTitle>
           </DialogHeader>
           {selectedUser && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
-              <p><b>Nome:</b> {selectedUser.name}</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+              <p className="text-lg font-medium">{selectedUser.name}</p>
               <p><b>Email:</b> {selectedUser.email}</p>
               <p><b>Tipo:</b> {getRoleLabel(selectedUser.role)}</p>
               <p><b>Status:</b> {selectedUser.is_active ? "Ativo" : "Inativo"}</p>
-              <p><b>Criado em:</b> {new Date(selectedUser.created_at).toLocaleDateString("pt-BR")}</p>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <p className="text-sm"><b>Senha:</b> {showViewPassword ? (selectedUser.password || "Sem senha") : "••••••••"}</p>
+                  <p className="text-xs text-gray-500">O admin pode ver senhas aqui.</p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowViewPassword((s) => !s)}
+                    title={showViewPassword ? "Ocultar senha" : "Ver senha"}
+                  >
+                    {showViewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyToClipboard(selectedUser.password || "", "Senha copiada")}
+                    title="Copiar senha"
+                  >
+                    <Clipboard className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-sm"><b>Criado em:</b> {selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString("pt-BR") : "-"}</p>
+
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" onClick={() => { copyToClipboard(selectedUser.email || "", "Email copiado"); }}>
+                  <Copy className="mr-2 h-4 w-4" /> Copiar Email
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setIsViewOpen(false); openEdit(selectedUser); }}>
+                  <Edit className="mr-2 h-4 w-4" /> Editar
+                </Button>
+              </div>
             </div>
           )}
           <div className="flex justify-end mt-3">
@@ -662,7 +529,7 @@ export function UserManagement() {
       </Dialog>
 
       {/* Modal: Editar */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <Dialog open={isEditOpen} onOpenChange={(open) => setIsEditOpen(open)}>
         <DialogContent className="max-w-lg bg-white rounded-2xl border border-gray-100 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-indigo-700 text-2xl font-semibold text-center">Editar Usuário</DialogTitle>
@@ -678,11 +545,32 @@ export function UserManagement() {
               <Input type="email" {...registerEdit("email")} />
             </div>
 
+            {/* Campo de senha */}
+            <div className="space-y-2">
+              <Label>Senha</Label>
+              <div className="flex gap-2">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Nova senha (opcional)"
+                  {...registerEdit("password")}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPassword((s) => !s)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">Deixe em branco para manter a senha atual.</p>
+            </div>
+
             <div className="space-y-2">
               <Label>Tipo</Label>
               <Select
+                defaultValue={editingUser?.role ?? "paciente"}
                 onValueChange={(v) => setValueEdit("role", v as any)}
-                defaultValue={editingUser?.role}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -698,8 +586,9 @@ export function UserManagement() {
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
+                key={editingUser?.id ?? "select-is-active"}
+                defaultValue={String(editingUser?.is_active ?? true)}
                 onValueChange={(v) => setValueEdit("is_active", v === "true")}
-                defaultValue={String(editingUser?.is_active)}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -718,113 +607,115 @@ export function UserManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Credenciais geradas (individual) */}
-      <Dialog open={isCredsOpen} onOpenChange={setIsCredsOpen}>
-        <DialogContent className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-indigo-700 text-xl font-semibold text-center">
-              Credenciais de Login
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Guarde essas informações com segurança.
-            </DialogDescription>
-          </DialogHeader>
-          {generatedLogin && (
-            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 space-y-2">
-              <p><b>👤 Nome:</b> {generatedLogin.name}</p>
-              <p><b>🔑 Tipo de login:</b> {getRoleLabel(generatedLogin.role)}</p>
-              <p><b>📧 Email:</b> {generatedLogin.email}</p>
-              <p><b>🔒 Senha:</b> {generatedLogin.password}</p>
-            </div>
-          )}
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={copyCreds}>
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar tudo
-            </Button>
-            <Button onClick={() => setIsCredsOpen(false)}>Fechar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: Credenciais geradas (import em lote) */}
-      <Dialog open={isBulkCredsOpen} onOpenChange={setIsBulkCredsOpen}>
-        <DialogContent className="max-w-xl bg-white rounded-2xl border border-gray-100 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-indigo-700 text-xl font-semibold text-center">
-              Credenciais Geradas (Importação)
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Copie e entregue as credenciais aos usuários.
-            </DialogDescription>
-          </DialogHeader>
-          {bulkCreds.length > 0 ? (
-            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 space-y-3 max-h-[50vh] overflow-auto">
-              {bulkCreds.map((c, i) => (
-                <div key={`${c.email}-${i}`} className="bg-white border border-gray-200 rounded-md p-3">
-                  <p><b>👤 Nome:</b> {c.name}</p>
-                  <p><b>🔑 Tipo de login:</b> {getRoleLabel(c.role)}</p>
-                  <p><b>📧 Email:</b> {c.email}</p>
-                  <p><b>🔒 Senha:</b> {c.password}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-gray-500 py-6">Nenhuma credencial gerada.</p>
-          )}
-          <div className="flex justify-end gap-2 mt-4">
-            <Button
-              variant="outline"
-              onClick={() => {
-                const text = bulkCreds.map(c =>
-`👤 Nome: ${c.name}
-🔑 Tipo de login: ${getRoleLabel(c.role)}
-📧 Email: ${c.email}
-🔒 Senha: ${c.password}`).join("\n\n");
-                navigator.clipboard.writeText(text);
-                toast.success("Todas as credenciais foram copiadas!");
-              }}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar tudo
-            </Button>
-            <Button onClick={() => setIsBulkCredsOpen(false)}>Fechar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* NOVO: Modal de confirmação — Apagar Tudo */}
-      <Dialog open={isDeleteAllOpen} onOpenChange={setIsDeleteAllOpen}>
+      {/* Modal: Criar Usuário */}
+      <Dialog open={isCreateOpen} onOpenChange={(open) => setIsCreateOpen(open)}>
         <DialogContent className="max-w-lg bg-white rounded-2xl border border-gray-100 shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="text-red-600 text-xl font-semibold text-center">
-              Apagar usuários em massa
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Esta ação não pode ser desfeita.
-            </DialogDescription>
+            <DialogTitle className="text-2xl font-semibold text-center">Criar Usuário</DialogTitle>
+            <DialogDescription className="text-center">O e-mail será gerado automaticamente a partir do nome — você pode editar se quiser.</DialogDescription>
           </DialogHeader>
+          <form onSubmit={handleSubmitCreate(onCreate)} className="space-y-5 mt-2">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input {...registerCreate("name")} />
+            </div>
 
-          <div className="bg-red-50 border border-red-100 rounded-lg p-4 space-y-2 text-red-800">
-            <p><b>Total de usuários:</b> {users.length}</p>
-            <p><b>Aplicado no filtro atual:</b> {filteredUsers.length}</p>
-          </div>
+            <div className="space-y-2">
+              <Label>Email (gerado automaticamente)</Label>
+              <div className="flex gap-2">
+                <Input type="email" {...registerCreate("email")} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const name = watchCreate("name") || "";
+                    const gen = generateEmailFromName(name || "user");
+                    setValueCreate("email", gen);
+                    toast.success("Email gerado");
+                  }}
+                >
+                  Gerar
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">Formato: nome.sobrenome@{EMAIL_DOMAIN}</p>
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 justify-end mt-4">
-            <Button
-              variant="outline"
-              onClick={() => deleteMany(filteredUsers)}
-              disabled={deletingMany || filteredUsers.length === 0}
-            >
-              {deletingMany ? "Apagando..." : `Apagar apenas filtrados (${filteredUsers.length})`}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteMany(users)}
-              disabled={deletingMany || users.length === 0}
-            >
-              {deletingMany ? "Apagando..." : `Apagar TODOS (${users.length})`}
-            </Button>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select
+                defaultValue="paciente"
+                onValueChange={(v) => setValueCreate("role", v as any)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                  <SelectItem value="financeiro">Financeiro</SelectItem>
+                  <SelectItem value="agendamento">Agendamento</SelectItem>
+                  <SelectItem value="medico">Médico</SelectItem>
+                  <SelectItem value="paciente">Paciente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="pt-3 flex gap-2">
+              <Button type="submit" disabled={creating} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                {creating ? "Criando..." : "Criar Usuário"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => { setIsCreateOpen(false); }}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal credenciais - exibidor com copiar */}
+      <Dialog open={isCredsOpen} onOpenChange={(open) => setIsCredsOpen(open)}>
+        <DialogContent className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>Credenciais geradas</DialogTitle>
+            <DialogDescription>Anote as credenciais abaixo e envie ao usuário.</DialogDescription>
+          </DialogHeader>
+          {generatedLogin && (
+            <div className="p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-gray-500">Nome</p>
+                  <p className="font-medium">{generatedLogin.name}</p>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(generatedLogin.name, "Nome copiado")}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-gray-500">Email</p>
+                  <p className="font-medium">{generatedLogin.email}</p>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(generatedLogin.email, "Email copiado")}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-gray-500">Senha</p>
+                  <p className="font-medium">{generatedLogin.password}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(generatedLogin.password, "Senha copiada")}>
+                    <Clipboard className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">Lembre-se de trocar senhas padrão após o primeiro acesso.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-3">
+            <Button onClick={() => { setIsCredsOpen(false); setGeneratedLogin(null); }}>Fechar</Button>
           </div>
         </DialogContent>
       </Dialog>

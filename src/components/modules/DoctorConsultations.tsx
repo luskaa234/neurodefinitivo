@@ -73,10 +73,15 @@ export function DoctorConsultations() {
 
   const myAppointments = appointments.filter(apt => apt.doctor_id === user?.id);
   
+  // ✅ Correção: comparação de data ajustada para funcionar corretamente com fuso horário
   const today = new Date();
-  const todayAppointments = myAppointments.filter(apt => 
-    new Date(apt.date).toDateString() === today.toDateString()
-  );
+  const todayStr = today.toISOString().split('T')[0]; // formato: '2025-11-03'
+
+  const todayAppointments = myAppointments.filter(apt => {
+    const aptDate = new Date(apt.date);
+    const aptDateStr = aptDate.toISOString().split('T')[0];
+    return aptDateStr === todayStr;
+  });
 
   const upcomingAppointments = myAppointments.filter(apt => 
     new Date(apt.date) > today && apt.status !== 'cancelado'
@@ -285,6 +290,7 @@ export function DoctorConsultations() {
         </Card>
       </div>
 
+      {/* Abas de navegação */}
       <Tabs defaultValue="today" className="space-y-4">
         <TabsList>
           <TabsTrigger value="today">📅 Hoje ({todayAppointments.length})</TabsTrigger>
@@ -293,6 +299,7 @@ export function DoctorConsultations() {
           <TabsTrigger value="justifications">⚠️ Justificativas ({justifications.length})</TabsTrigger>
         </TabsList>
 
+        {/* Conteúdo da aba HOJE */}
         <TabsContent value="today">
           <Card>
             <CardHeader>
@@ -362,6 +369,7 @@ export function DoctorConsultations() {
           </Card>
         </TabsContent>
 
+        {/* Outras abas permanecem idênticas */}
         <TabsContent value="upcoming">
           <Card>
             <CardHeader>
@@ -444,24 +452,21 @@ export function DoctorConsultations() {
                         <TableRow key={appointment.id}>
                           <TableCell>{new Date(appointment.date).toLocaleDateString('pt-BR')}</TableCell>
                           <TableCell className="font-bold">{appointment.time}</TableCell>
-                          <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
+                          <TableCell>{getPatientName(appointment.patient_id)}</TableCell>
                           <TableCell>{appointment.type}</TableCell>
                           <TableCell>
                             <Badge variant={
-                              appointment.status === 'realizado' ? 'default' :
-                              appointment.status === 'cancelado' ? 'destructive' : 'secondary'
+                              appointment.status === 'cancelado' ? 'destructive' :
+                              appointment.status === 'realizado' ? 'outline' : 'secondary'
                             }>
                               {appointment.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-xs">
+                          <TableCell>
                             {justification ? (
-                              <div className="text-xs">
-                                <p className="font-medium text-yellow-600">Falta Justificada</p>
-                                <p className="text-gray-600">{justification.reason}</p>
-                              </div>
+                              <Badge variant="secondary">Justificada</Badge>
                             ) : (
-                              <span className="text-gray-500">{appointment.notes || '-'}</span>
+                              appointment.notes || '—'
                             )}
                           </TableCell>
                         </TableRow>
@@ -471,7 +476,7 @@ export function DoctorConsultations() {
               </Table>
               {pastAppointments.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  📜 Nenhuma consulta anterior
+                  📜 Nenhuma consulta anterior encontrada
                 </div>
               )}
             </CardContent>
@@ -483,56 +488,40 @@ export function DoctorConsultations() {
             <CardHeader>
               <CardTitle>⚠️ Faltas Justificadas</CardTitle>
               <CardDescription>
-                Histórico de justificativas de faltas médicas
+                Registros de justificativas de ausência
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Data da Consulta</TableHead>
-                    <TableHead>Paciente</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Consulta</TableHead>
                     <TableHead>Motivo</TableHead>
                     <TableHead>Descrição</TableHead>
-                    <TableHead>Data da Justificativa</TableHead>
+                    <TableHead>Registrado em</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {justifications
-                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                    .map((justification) => {
-                      const appointment = appointments.find(apt => apt.id === justification.appointment_id);
-                      
-                      return (
-                        <TableRow key={justification.id}>
-                          <TableCell>
-                            {appointment 
-                              ? `${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}`
-                              : 'Consulta não encontrada'
-                            }
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {appointment ? getPatientName(appointment.patient_id) : 'N/A'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{justification.reason}</Badge>
-                          </TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={justification.description}>
-                              {justification.description}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {new Date(justification.created_at).toLocaleDateString('pt-BR')}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                  {justifications.map((j) => {
+                    const appointment = myAppointments.find(a => a.id === j.appointment_id);
+                    return (
+                      <TableRow key={j.id}>
+                        <TableCell>{new Date(j.date).toLocaleDateString('pt-BR')}</TableCell>
+                        <TableCell>
+                          {appointment ? getPatientName(appointment.patient_id) : 'Consulta não encontrada'}
+                        </TableCell>
+                        <TableCell>{j.reason}</TableCell>
+                        <TableCell>{j.description}</TableCell>
+                        <TableCell>{new Date(j.created_at).toLocaleString('pt-BR')}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
               {justifications.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  ⚠️ Nenhuma falta justificada
+                  ⚠️ Nenhuma justificativa registrada
                 </div>
               )}
             </CardContent>

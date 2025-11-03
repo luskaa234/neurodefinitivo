@@ -3,16 +3,17 @@ const withPWAFactory = require('@ducanh2912/next-pwa').default;
 const path = require('path');
 
 const withPWA = withPWAFactory({
-  dest: 'public',
+  dest: 'public', // gera sw.js na pasta public
   register: true,
   skipWaiting: true,
   reloadOnOnline: true,
-  scope: '/app',
+  scope: '/app', // evita interceptar _next/*
   fallbacks: {
-    document: '/offline.html',
+    document: '/offline.html', // página offline
   },
   runtimeCaching: [
     {
+      // Cache de imagens locais e remotas
       urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif|ico|webp|avif)$/i,
       handler: 'CacheFirst',
       options: {
@@ -21,6 +22,7 @@ const withPWA = withPWAFactory({
       },
     },
     {
+      // Cache de arquivos do Supabase
       urlPattern: /^https:\/\/.*\/storage\/v1\/object\/public\/.*/i,
       handler: 'NetworkFirst',
       options: {
@@ -29,6 +31,7 @@ const withPWA = withPWAFactory({
       },
     },
     {
+      // Evita cachear rotas internas do Next
       urlPattern: /^\/_next\/.*/i,
       handler: 'NetworkOnly',
     },
@@ -44,7 +47,7 @@ module.exports = withPWA({
   typescript: { ignoreBuildErrors: true },
 
   experimental: {
-    optimizeCss: true,
+    // optimizeCss desativado para evitar Critters no Vercel
     allowedDevOrigins: [
       'http://localhost:3000',
       'http://127.0.0.1:3000',

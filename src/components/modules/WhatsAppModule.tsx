@@ -19,7 +19,7 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger
 } from "@/components/ui/tabs";
 import {
-  MessageSquare, Send, Trash2, Users, Calendar, Clock, Settings, Plus
+  MessageSquare, Send, Trash2, Users, Calendar, Clock, Settings, Plus, Eye, Edit
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,11 +38,10 @@ interface WhatsAppMessage {
 
 export function WhatsAppModule() {
   const { user } = useAuth();
-  const { appointments, patients, doctors, updateAppointment } = useApp();
+  const { appointments, patients, doctors } = useApp();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [mode, setMode] = useState<"withAppointment" | "free">("withAppointment");
-  const [selectedPatients, setSelectedPatients] = useState<string[]>([]);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [customMessage, setCustomMessage] = useState("");
@@ -52,6 +51,11 @@ export function WhatsAppModule() {
   const [filterDate, setFilterDate] = useState("");
   const [filterPatient, setFilterPatient] = useState("");
   const [filterDoctor, setFilterDoctor] = useState("");
+
+  // VIEW / EDIT MESSAGE MODALS
+  const [viewMessage, setViewMessage] = useState<WhatsAppMessage | null>(null);
+  const [editMessage, setEditMessage] = useState<WhatsAppMessage | null>(null);
+  const [editText, setEditText] = useState("");
 
   const [messageTemplates] = useState([
     "✅ Olá {nome}, sua consulta com {medico} está confirmada para {data} às {horario}. Clínica: {telefone_clinica}",
@@ -67,27 +71,15 @@ export function WhatsAppModule() {
   }, []);
 
   const loadMessages = () => {
-    const savedMessages = localStorage.getItem("whatsapp-messages");
-    if (savedMessages) {
-      try {
-        setMessages(JSON.parse(savedMessages));
-      } catch (error) {
-        console.error("Erro ao carregar mensagens:", error);
-      }
-    }
+    const saved = localStorage.getItem("whatsapp-messages");
+    if (saved) setMessages(JSON.parse(saved));
   };
 
   const loadSettings = () => {
     const settings = localStorage.getItem("app-settings");
     if (settings) {
-      try {
-        const parsedSettings = JSON.parse(settings);
-        if (parsedSettings.whatsapp_number) {
-          setClinicPhone(parsedSettings.whatsapp_number);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar configurações:", error);
-      }
+      const parsed = JSON.parse(settings);
+      if (parsed.whatsapp_number) setClinicPhone(parsed.whatsapp_number);
     }
   };
 
@@ -95,7 +87,7 @@ export function WhatsAppModule() {
     const settings = JSON.parse(localStorage.getItem("app-settings") || "{}");
     settings.whatsapp_number = clinicPhone;
     localStorage.setItem("app-settings", JSON.stringify(settings));
-    toast.success("✅ Configurações salvas!");
+    toast.success("Configurações salvas!");
   };
 
   const sendWhatsAppMessage = async (
@@ -105,14 +97,9 @@ export function WhatsAppModule() {
     appointmentId?: string
   ) => {
     try {
-      if (!patientPhone) {
-        toast.error(`❌ ${patientName} não tem telefone cadastrado`);
-        return false;
-      }
-
       const cleanPhone = patientPhone.replace(/\D/g, "");
-      if (cleanPhone.length < 10) {
-        toast.error(`❌ Telefone inválido para ${patientName}: ${patientPhone}`);
+      if (!cleanPhone) {
+        toast.error("Telefone inválido");
         return false;
       }
 
@@ -122,7 +109,7 @@ export function WhatsAppModule() {
       window.open(whatsappUrl, "_blank");
 
       const newMessage: WhatsAppMessage = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        id: Date.now().toString(),
         from_clinic: clinicPhone,
         to_patient: cleanPhone,
         patient_name: patientName,
@@ -132,96 +119,91 @@ export function WhatsAppModule() {
         appointment_id: appointmentId,
       };
 
-      const updatedMessages = [newMessage, ...messages];
-      setMessages(updatedMessages);
-      localStorage.setItem("whatsapp-messages", JSON.stringify(updatedMessages));
+      const updated = [newMessage, ...messages];
+      setMessages(updated);
+      localStorage.setItem("whatsapp-messages", JSON.stringify(updated));
 
-      toast.success(`✅ WhatsApp enviado para ${patientName}!`);
+      toast.success("Mensagem enviada!");
       return true;
-    } catch (error) {
-      console.error("Erro ao enviar WhatsApp:", error);
-      toast.error(`❌ Erro ao enviar WhatsApp para ${patientName}`);
+    } catch {
+      toast.error("Erro ao enviar mensagem");
       return false;
     }
   };
 
   const handleSend = async () => {
-    let targetPatient: any = null;
+    let patient: any = null;
     let appointment: any = null;
 
     if (mode === "withAppointment" && selectedAppointmentId) {
       appointment = appointments.find((a) => a.id === selectedAppointmentId);
-      if (!appointment) return toast.error("❌ Nenhum agendamento selecionado");
-      targetPatient = patients.find((p) => p.id === appointment.patient_id);
-    } else if (mode === "free" && selectedPatientId) {
-      targetPatient = patients.find((p) => p.id === selectedPatientId);
+      patient = patients.find((p) => p.id === appointment.patient_id);
+    } else {
+      patient = patients.find((p) => p.id === selectedPatientId);
     }
 
-    if (!targetPatient) return toast.error("❌ Nenhum paciente selecionado");
-    if (!customMessage.trim()) return toast.error("❌ Digite ou selecione uma mensagem");
+    if (!patient || !customMessage.trim()) return;
 
     const doctor = appointment ? doctors.find((d) => d.id === appointment.doctor_id) : null;
 
-    const personalizedMessage = customMessage
-      .replace("{nome}", targetPatient.name)
+    const msg = customMessage
+      .replace("{nome}", patient.name)
+      .replace("{medico}", doctor?.name || "Médico não informado")
       .replace("{telefone_clinica}", clinicPhone)
-      .replace("{medico}", doctor ? doctor.name : "Médico não informado")
-      .replace(
-        "{data}",
-        appointment
-          ? new Date(appointment.date).toLocaleDateString("pt-BR")
-          : "Data não definida"
-      )
-      .replace("{horario}", appointment ? appointment.time : "Horário não definido");
+      .replace("{data}", appointment ? appointment.date : "")
+      .replace("{horario}", appointment ? appointment.time : "");
 
-    await sendWhatsAppMessage(
-      targetPatient.phone || "",
-      targetPatient.name,
-      personalizedMessage,
-      appointment?.id
+    await sendWhatsAppMessage(patient.phone, patient.name, msg, appointment?.id);
+  };
+
+  const deleteMessage = (id: string) => {
+    if (!confirm("Excluir mensagem?")) return;
+    const updated = messages.filter((m) => m.id !== id);
+    setMessages(updated);
+    localStorage.setItem("whatsapp-messages", JSON.stringify(updated));
+  };
+
+  // SAVE EDITED
+  const saveEditedMessage = () => {
+    if (!editMessage) return;
+
+    const updated = messages.map((m) =>
+      m.id === editMessage.id ? { ...m, message: editText } : m
     );
+
+    setMessages(updated);
+    localStorage.setItem("whatsapp-messages", JSON.stringify(updated));
+    toast.success("Mensagem editada!");
+    setEditMessage(null);
   };
 
-  const deleteMessage = (messageId: string) => {
-    if (window.confirm("Tem certeza que deseja excluir esta mensagem do histórico?")) {
-      const updatedMessages = messages.filter((m) => m.id !== messageId);
-      setMessages(updatedMessages);
-      localStorage.setItem("whatsapp-messages", JSON.stringify(updatedMessages));
-      toast.success("✅ Mensagem excluída do histórico!");
-    }
-  };
-
-  // Filtro aplicado
   const filteredAppointments = appointments.filter((apt) => {
-    const patient = patients.find((p) => p.id === apt.patient_id);
-    const doctor = doctors.find((d) => d.id === apt.doctor_id);
-
     const matchDate = filterDate ? apt.date.startsWith(filterDate) : true;
     const matchPatient = filterPatient ? apt.patient_id === filterPatient : true;
     const matchDoctor = filterDoctor ? apt.doctor_id === filterDoctor : true;
-
     return matchDate && matchPatient && matchDoctor && apt.status !== "cancelado";
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">📱 WhatsApp Profissional</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">📱 WhatsApp Profissional</h1>
           <p className="text-gray-600 mt-2">
             Envio profissional de mensagens automáticas e personalizadas
           </p>
         </div>
 
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-green-600 hover:bg-green-700">
                 <Plus className="mr-2 h-4 w-4" /> Nova Mensagem
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl">
+
+            <DialogContent className="max-w-5xl w-[95vw]">
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold">📱 Enviar WhatsApp</DialogTitle>
                 <DialogDescription>
@@ -229,22 +211,23 @@ export function WhatsAppModule() {
                 </DialogDescription>
               </DialogHeader>
 
-              {/* Tabs do envio */}
-              <Tabs defaultValue="withAppointment" onValueChange={(v) => setMode(v as any)} className="w-full">
-                <TabsList className="mb-4">
+              {/* TABS */}
+              <Tabs defaultValue="withAppointment" onValueChange={(v) => setMode(v as any)}>
+                <TabsList className="mb-4 flex flex-wrap">
                   <TabsTrigger value="withAppointment">📅 Com Agendamento</TabsTrigger>
                   <TabsTrigger value="free">👤 Sem Agendamento</TabsTrigger>
                 </TabsList>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Coluna Esquerda */}
+                {/* GRID RESPONSIVA */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* ESQUERDA */}
                   <div className="space-y-4">
                     {mode === "withAppointment" ? (
                       <>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                           <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
                           <select
-                            className="border p-2 rounded flex-1"
+                            className="border p-2 rounded"
                             value={filterPatient}
                             onChange={(e) => setFilterPatient(e.target.value)}
                           >
@@ -254,7 +237,7 @@ export function WhatsAppModule() {
                             ))}
                           </select>
                           <select
-                            className="border p-2 rounded flex-1"
+                            className="border p-2 rounded"
                             value={filterDoctor}
                             onChange={(e) => setFilterDoctor(e.target.value)}
                           >
@@ -274,19 +257,18 @@ export function WhatsAppModule() {
                                 key={apt.id}
                                 onClick={() => setSelectedAppointmentId(apt.id)}
                                 className={`p-3 cursor-pointer transition ${
-                                  selectedAppointmentId === apt.id ? "bg-blue-100 border-l-4 border-blue-600" : "hover:bg-gray-50"
+                                  selectedAppointmentId === apt.id
+                                    ? "bg-blue-100 border-l-4 border-blue-600"
+                                    : "hover:bg-gray-50"
                                 }`}
                               >
                                 <div className="font-semibold">{patient?.name}</div>
                                 <div className="text-sm text-gray-600">
-                                  🩺 {doctor?.name} — 📅 {new Date(apt.date).toLocaleDateString("pt-BR")} ⏰ {apt.time}
+                                  🩺 {doctor?.name} — {apt.date} ⏰ {apt.time}
                                 </div>
                               </div>
                             );
                           })}
-                          {filteredAppointments.length === 0 && (
-                            <p className="p-3 text-gray-500 text-center">Nenhum agendamento encontrado</p>
-                          )}
                         </div>
                       </>
                     ) : (
@@ -308,7 +290,7 @@ export function WhatsAppModule() {
                     )}
                   </div>
 
-                  {/* Coluna Direita */}
+                  {/* DIREITA */}
                   <div className="space-y-4">
                     <Label>📝 Templates</Label>
                     <div className="grid gap-2">
@@ -327,7 +309,7 @@ export function WhatsAppModule() {
                   </div>
                 </div>
 
-                {/* Caixa de mensagem + preview */}
+                {/* MENSAGEM PERSONALIZADA */}
                 <div className="mt-6 space-y-3">
                   <Label>✍️ Mensagem Personalizada</Label>
                   <Textarea
@@ -336,17 +318,9 @@ export function WhatsAppModule() {
                     value={customMessage}
                     onChange={(e) => setCustomMessage(e.target.value)}
                   />
-
-                  {customMessage && (
-                    <div className="p-4 border rounded-lg bg-gray-50">
-                      <p className="text-xs text-gray-500 mb-1">📲 Preview da mensagem:</p>
-                      <p>{customMessage}</p>
-                    </div>
-                  )}
                 </div>
 
-                {/* Botões */}
-                <div className="flex justify-end mt-6 gap-2">
+                <div className="flex justify-end gap-2 mt-4">
                   <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                   <Button className="bg-green-600 hover:bg-green-700" onClick={handleSend}>
                     <Send className="mr-2 h-4 w-4" /> Enviar
@@ -357,13 +331,12 @@ export function WhatsAppModule() {
           </Dialog>
 
           <Button variant="outline" onClick={() => setMessages([])}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Limpar Histórico
+            <Trash2 className="mr-2 h-4 w-4" /> Limpar Histórico
           </Button>
         </div>
       </div>
 
-      {/* HISTÓRICO */}
+      {/* ========================== HISTÓRICO ========================== */}
       <Tabs defaultValue="history">
         <TabsList>
           <TabsTrigger value="history">Histórico</TabsTrigger>
@@ -374,37 +347,66 @@ export function WhatsAppModule() {
             <CardHeader>
               <CardTitle>📜 Histórico de Mensagens</CardTitle>
             </CardHeader>
+
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data/Hora</TableHead>
-                    <TableHead>Paciente</TableHead>
-                    <TableHead>Telefone</TableHead>
-                    <TableHead>Mensagem</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {messages.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell>{new Date(m.sent_at).toLocaleString("pt-BR")}</TableCell>
-                      <TableCell>{m.patient_name}</TableCell>
-                      <TableCell>{m.to_patient}</TableCell>
-                      <TableCell>{m.message.substring(0, 60)}...</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteMessage(m.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table className="min-w-max">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data/Hora</TableHead>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Mensagem</TableHead>
+                      <TableHead>Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {messages.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>{new Date(m.sent_at).toLocaleString("pt-BR")}</TableCell>
+                        <TableCell>{m.patient_name}</TableCell>
+                        <TableCell>{m.to_patient}</TableCell>
+                        <TableCell>{m.message.substring(0, 50)}...</TableCell>
+                        <TableCell className="flex gap-2">
+
+                          {/* VIEW BUTTON */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setViewMessage(m)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+
+                          {/* EDIT BUTTON */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditMessage(m);
+                              setEditText(m.message);
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+
+                          {/* DELETE */}
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteMessage(m.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
               {messages.length === 0 && (
                 <p className="text-center py-4 text-gray-500">📭 Nenhuma mensagem</p>
               )}
@@ -412,6 +414,44 @@ export function WhatsAppModule() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ======================== VIEW MODAL ======================== */}
+      <Dialog open={!!viewMessage} onOpenChange={() => setViewMessage(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>📩 Visualizar Mensagem</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm whitespace-pre-wrap">{viewMessage?.message}</p>
+
+          <div className="text-right">
+            <Button onClick={() => setViewMessage(null)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================== EDIT MODAL ======================== */}
+      <Dialog open={!!editMessage} onOpenChange={() => setEditMessage(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>✏️ Editar Mensagem</DialogTitle>
+          </DialogHeader>
+
+          <Textarea
+            rows={6}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+          />
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setEditMessage(null)}>Cancelar</Button>
+            <Button className="bg-blue-600 text-white" onClick={saveEditedMessage}>
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

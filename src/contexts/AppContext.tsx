@@ -27,8 +27,6 @@ export interface User {
   password?: string; // senha inicial = 6 primeiras letras do nome
 }
 
-
-
 export type AppointmentStatus =
   | "pendente"
   | "confirmado"
@@ -38,7 +36,14 @@ export type AppointmentStatus =
 export interface Appointment {
   id: string;
   patient_id: string;
+
+  // mantém médico principal
   doctor_id: string;
+
+  // ✅ múltiplos médicos (via tabela appointment_doctors)
+  // (opcional p/ não quebrar nada)
+  doctor_ids?: string[];
+
   date: string;
   time: string;
   status: AppointmentStatus;
@@ -71,7 +76,6 @@ export interface MedicalRecord {
   created_at: string;
 }
 
-
 export interface Service {
   id: string;
   name: string;
@@ -100,7 +104,6 @@ interface AppContextType {
   loading: boolean;
   error: string | null;
 
-
   // Usuários
   addUser: (user: Omit<User, "id" | "created_at">) => Promise<boolean>;
   updateUser: (id: string, user: Partial<User>) => Promise<boolean>;
@@ -127,15 +130,12 @@ interface AppContextType {
   deleteService: (id: string) => Promise<boolean>;
 }
 
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>(
-    []
-  );
+  const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,28 +146,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
+
+  const normalizeAppointmentDoctors = (apt: any): Appointment => {
+    const rel = Array.isArray(apt?.appointment_doctors) ? apt.appointment_doctors : [];
+    const relIds = rel.map((x: any) => x?.doctor_id).filter(Boolean);
+    const all = uniq([apt.doctor_id, ...relIds]);
+    const out: Appointment = { ...apt, doctor_ids: all };
+    delete (out as any).appointment_doctors;
+    return out;
+  };
+
+  const syncAppointmentDoctors = async (appointment_id: string, doctor_ids: string[]) => {
+    const ids = uniq(doctor_ids);
+
+    // 1) apaga relação atual
+    const { error: delErr } = await supabase
+      .from("appointment_doctors")
+      .delete()
+      .eq("appointment_id", appointment_id);
+
+    if (delErr) {
+      toast.error("Erro ao atualizar médicos da consulta.");
+      return false;
+    }
+
+    // 2) insere relação nova (se houver)
+    if (ids.length > 0) {
+      const rows = ids.map((doctor_id) => ({ appointment_id, doctor_id }));
+      const { error: insErr } = await supabase
+        .from("appointment_doctors")
+        .insert(rows);
+
+      if (insErr) {
+        toast.error("Erro ao salvar médicos da consulta.");
+        return false;
+      }
+    }
+
+    return true;
+  };
 
   const loadAllData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [usersData, appointmentsData, financialData, medicalData] =
-        await Promise.all([
-          supabase.from("users").select("*").order("created_at", { ascending: false }),
-          supabase.from("appointments").select("*").order("date", { ascending: false }),
-          supabase.from("financial_records").select("*").order("date", { ascending: false }),
-          supabase.from("medical_records").select("*").order("date", { ascending: false }),
-        ]);
+      const [
+        usersData,
+        appointmentsData,
+        financialData,
+        medicalData,
+        servicesData,
+      ] = await Promise.all([
+        supabase.from("users").select("*").order("created_at", { ascending: false }),
+        // ✅ traz os médicos vinculados (tabela appointment_doctors)
+        supabase
+          .from("appointments")
+          .select(`*, appointment_doctors(doctor_id)`)
+          .order("date", { ascending: false }),
+        supabase.from("financial_records").select("*").order("date", { ascending: false }),
+        supabase.from("medical_records").select("*").order("date", { ascending: false }),
+        // ✅ estava faltando carregar serviços
+        supabase.from("services").select("*").order("created_at", { ascending: false }),
+      ]);
 
       if (!usersData.error && usersData.data) setUsers(usersData.data);
-      if (!appointmentsData.error && appointmentsData.data)
-        setAppointments(appointmentsData.data);
-      if (!financialData.error && financialData.data)
-        setFinancialRecords(financialData.data);
-      if (!medicalData.error && medicalData.data)
-        setMedicalRecords(medicalData.data);
+
+      if (!appointmentsData.error && appointmentsData.data) {
+        const normalized = (appointmentsData.data as any[]).map(normalizeAppointmentDoctors);
+        setAppointments(normalized);
+      }
+
+      if (!financialData.error && financialData.data) setFinancialRecords(financialData.data);
+      if (!medicalData.error && medicalData.data) setMedicalRecords(medicalData.data);
+      if (!servicesData.error && servicesData.data) setServices(servicesData.data);
     } catch (err) {
       console.error("❌ Erro ao carregar dados:", err);
       setError("Erro ao carregar dados do sistema");
@@ -184,6 +240,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .insert([userData])
         .select()
         .single();
+
       if (error || !data) return false;
       setUsers((prev) => [data, ...prev]);
       return true;
@@ -200,6 +257,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id)
         .select()
         .single();
+
       if (error || !data) return false;
       setUsers((prev) => prev.map((u) => (u.id === id ? data : u)));
       return true;
@@ -222,34 +280,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Consultas
   const addAppointment = async (appointment: NewAppointment) => {
     try {
+      // ✅ aceita doctor_ids no front (sem precisar existir coluna no appointments)
+      const { doctor_ids, ...base } = appointment as any;
+
       const { data, error } = await supabase
         .from("appointments")
-        .insert([appointment])
+        .insert([base])
         .select()
         .single();
+
       if (error || !data) return false;
-      setAppointments((prev) => [data, ...prev]);
+
+      // ✅ sincroniza os médicos (principal + adicionais)
+      const ids = uniq([data.doctor_id, ...(doctor_ids || [])]);
+      const relOk = await syncAppointmentDoctors(data.id, ids);
+      if (!relOk) return false;
+
+      const normalized = normalizeAppointmentDoctors({
+        ...data,
+        appointment_doctors: ids.map((id: string) => ({ doctor_id: id })),
+      });
+
+      setAppointments((prev) => [normalized, ...prev]);
       return true;
     } catch {
       return false;
     }
   };
 
-  const updateAppointment = async (
-    id: string,
-    appointment: Partial<Appointment>
-  ) => {
+  const updateAppointment = async (id: string, appointment: Partial<Appointment>) => {
     try {
+      const { doctor_ids, ...base } = appointment as any;
+
       const { data, error } = await supabase
         .from("appointments")
-        .update(appointment)
+        .update(base)
         .eq("id", id)
         .select()
         .single();
+
       if (error || !data) return false;
-      setAppointments((prev) =>
-        prev.map((apt) => (apt.id === id ? data : apt))
-      );
+
+      // se veio doctor_ids, atualiza relação
+      if (Array.isArray(doctor_ids)) {
+        const ids = uniq([data.doctor_id, ...doctor_ids]);
+        const relOk = await syncAppointmentDoctors(id, ids);
+        if (!relOk) return false;
+
+        const normalized = normalizeAppointmentDoctors({
+          ...data,
+          appointment_doctors: ids.map((d: string) => ({ doctor_id: d })),
+        });
+
+        setAppointments((prev) => prev.map((apt) => (apt.id === id ? normalized : apt)));
+        return true;
+      }
+
+      // se não veio doctor_ids, mantém como está (mas normaliza p/ garantir)
+      const normalized = normalizeAppointmentDoctors({ ...data, appointment_doctors: [] });
+      setAppointments((prev) => prev.map((apt) => (apt.id === id ? normalized : apt)));
       return true;
     } catch {
       return false;
@@ -258,6 +347,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAppointment = async (id: string) => {
     try {
+      // ✅ apaga relação primeiro
+      await supabase.from("appointment_doctors").delete().eq("appointment_id", id);
+
       const { error } = await supabase.from("appointments").delete().eq("id", id);
       if (error) return false;
       setAppointments((prev) => prev.filter((apt) => apt.id !== id));
@@ -275,6 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .insert([record])
         .select()
         .single();
+
       if (error || !data) return false;
       setFinancialRecords((prev) => [data, ...prev]);
       return true;
@@ -283,10 +376,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateFinancialRecord = async (
-    id: string,
-    record: Partial<FinancialRecord>
-  ) => {
+  const updateFinancialRecord = async (id: string, record: Partial<FinancialRecord>) => {
     try {
       const { data, error } = await supabase
         .from("financial_records")
@@ -294,10 +384,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id)
         .select()
         .single();
+
       if (error || !data) return false;
-      setFinancialRecords((prev) =>
-        prev.map((r) => (r.id === id ? data : r))
-      );
+      setFinancialRecords((prev) => prev.map((r) => (r.id === id ? data : r)));
       return true;
     } catch {
       return false;
@@ -306,10 +395,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteFinancialRecord = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("financial_records")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from("financial_records").delete().eq("id", id);
       if (error) return false;
       setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
       return true;
@@ -326,6 +412,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .insert([record])
         .select()
         .single();
+
       if (error || !data) return false;
       setMedicalRecords((prev) => [data, ...prev]);
       return true;
@@ -334,10 +421,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateMedicalRecord = async (
-    id: string,
-    record: Partial<MedicalRecord>
-  ) => {
+  const updateMedicalRecord = async (id: string, record: Partial<MedicalRecord>) => {
     try {
       const { data, error } = await supabase
         .from("medical_records")
@@ -345,65 +429,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id)
         .select()
         .single();
+
       if (error || !data) return false;
-      setMedicalRecords((prev) =>
-        prev.map((rec) => (rec.id === id ? data : rec))
-      );
+      setMedicalRecords((prev) => prev.map((rec) => (rec.id === id ? data : rec)));
       return true;
     } catch {
       return false;
     }
   };
-  // Serviços
-const addService = async (service: Omit<Service, "id" | "created_at">) => {
-  try {
-    const { data, error } = await supabase
-      .from("services")
-      .insert([service])
-      .select()
-      .single();
-    if (error || !data) return false;
-    setServices((prev) => [data, ...prev]);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const updateService = async (id: string, updates: Partial<Service>) => {
-  try {
-    const { data, error } = await supabase
-      .from("services")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-    if (error || !data) return false;
-    setServices((prev) => prev.map((s) => (s.id === id ? data : s)));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const deleteService = async (id: string) => {
-  try {
-    const { error } = await supabase.from("services").delete().eq("id", id);
-    if (error) return false;
-    setServices((prev) => prev.filter((s) => s.id !== id));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 
   const deleteMedicalRecord = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("medical_records")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from("medical_records").delete().eq("id", id);
       if (error) return false;
       setMedicalRecords((prev) => prev.filter((rec) => rec.id !== id));
       return true;
@@ -412,37 +449,80 @@ const deleteService = async (id: string) => {
     }
   };
 
-  return (
-  <AppContext.Provider
-    value={{
-      users,
-      doctors,
-      patients,
-      appointments,
-      financialRecords,
-      medicalRecords,
-      services,
-      loading,
-      error,
-      addUser,
-      updateUser,
-      deleteUser,
-      addAppointment,
-      updateAppointment,
-      deleteAppointment,
-      addFinancialRecord,
-      updateFinancialRecord,
-      deleteFinancialRecord,
-      addMedicalRecord,
-      updateMedicalRecord,
-      deleteMedicalRecord,
-      addService,
-      updateService,
-      deleteService,
-      
-    }}
-  >
+  // Serviços
+  const addService = async (service: Omit<Service, "id" | "created_at">) => {
+    try {
+      const { data, error } = await supabase
+        .from("services")
+        .insert([service])
+        .select()
+        .single();
 
+      if (error || !data) return false;
+      setServices((prev) => [data, ...prev]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const updateService = async (id: string, updates: Partial<Service>) => {
+    try {
+      const { data, error } = await supabase
+        .from("services")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error || !data) return false;
+      setServices((prev) => prev.map((s) => (s.id === id ? data : s)));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const deleteService = async (id: string) => {
+    try {
+      const { error } = await supabase.from("services").delete().eq("id", id);
+      if (error) return false;
+      setServices((prev) => prev.filter((s) => s.id !== id));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        users,
+        doctors,
+        patients,
+        appointments,
+        financialRecords,
+        medicalRecords,
+        services,
+        loading,
+        error,
+        addUser,
+        updateUser,
+        deleteUser,
+        addAppointment,
+        updateAppointment,
+        deleteAppointment,
+        addFinancialRecord,
+        updateFinancialRecord,
+        deleteFinancialRecord,
+        addMedicalRecord,
+        updateMedicalRecord,
+        deleteMedicalRecord,
+        addService,
+        updateService,
+        deleteService,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

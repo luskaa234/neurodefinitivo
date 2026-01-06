@@ -45,7 +45,7 @@ export function SystemSettings() {
     company_address: '',
     company_phone: '',
     company_email: '',
-    whatsapp_number: '98974003414',
+    whatsapp_number: '98970187749',
     working_hours: {
       start: '08:00',
       end: '21:00'

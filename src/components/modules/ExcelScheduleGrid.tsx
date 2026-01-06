@@ -1,1175 +1,919 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
-import { Plus, Search, X, ChevronsUpDown, Check } from "lucide-react";
-
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import ptBr from "@fullcalendar/core/locales/pt-br";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { Command, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
+
+import { toast } from "sonner";
+import { Plus, X, ChevronsUpDown, Check, Trash2, Pencil } from "lucide-react";
 
 import { useApp } from "@/contexts/AppContext";
-import { supabase } from "@/lib/supabase";
 
-// UI usa "agendado", BD usa "pendente"
+/* ======================================================
+   STATUS
+====================================================== */
 type UIStatus = "agendado" | "confirmado" | "realizado" | "cancelado";
 type DBStatus = "pendente" | "confirmado" | "realizado" | "cancelado";
 
 const toDbStatus = (s: UIStatus): DBStatus => (s === "agendado" ? "pendente" : s);
-const toUiStatus = (s: DBStatus | UIStatus | string): UIStatus =>
-  s === "pendente" ? "agendado" : (s as UIStatus);
+const toUiStatus = (s: DBStatus | string): UIStatus => (s === "pendente" ? "agendado" : (s as UIStatus));
 
-// utilzinho p/ classes condicionais
 const cn = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
-// ===== Componente =====
-export default function AgendaCalendario() {
-  const {
-    appointments,
-    patients,
-    doctors,
-    services,
-    addAppointment,
-    updateAppointment,
-    deleteAppointment,
-  } = useApp();
+/* ======================================================
+   TIPOS AUX (flexível com seu BD)
+====================================================== */
+type AptLike = {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  date: string;
+  time: string;
+  type: string;
+  price: number;
+  status: DBStatus | string;
+  notes?: string;
 
-  // ----------------- estado UI -----------------
-  const [busca, setBusca] = useState("");
-  const [filtroMedico, setFiltroMedico] = useState<string>("all");
-  const [filtroStatus, setFiltroStatus] = useState<UIStatus | "all">("all");
-  const [filtroData, setFiltroData] = useState("");
-  const [eventoSelecionado, setEventoSelecionado] = useState<any>(null);
+  // no seu Contexto final você usa doctor_ids (múltiplos)
+  doctor_ids?: string[];
+  // compat caso em algum lugar venha doctors
+  doctors?: string[];
+};
+
+/* ======================================================
+   COMPONENTE
+====================================================== */
+export default function AgendaCalendario() {
+  const { appointments, patients, doctors, services, addAppointment, updateAppointment, deleteAppointment } = useApp();
+
+  /* ======================================================
+     ESTADOS UI
+  ====================================================== */
   const [adicionando, setAdicionando] = useState(false);
   const [editando, setEditando] = useState(false);
+  const [eventoSelecionado, setEventoSelecionado] = useState<AptLike | null>(null);
 
-  // ----------------- pacientes extras (criadas “na hora”) -----------------
-  const [extraPatients, setExtraPatients] = useState<Array<{ id: string; name: string; email?: string; phone?: string }>>([]);
+  const [filtroMedico, setFiltroMedico] = useState<string>("all");
+  const [filtroStatus, setFiltroStatus] = useState<UIStatus | "all">("all");
+  const [filtroData, setFiltroData] = useState<string>("");
+  const [busca, setBusca] = useState<string>("");
 
-  const allPatients = useMemo(
-    () => {
-      const map = new Map<string, { id: string; name: string; email?: string; phone?: string }>();
-      patients.forEach(p => map.set(p.id, p));
-      extraPatients.forEach(p => map.set(p.id, p));
-      return Array.from(map.values());
-    },
-    [patients, extraPatients]
-  );
-
-  // ----------------- novo agendamento -----------------
-  const [novoAgendamento, setNovoAgendamento] = useState<{
-    date: string;
-    time: string;
-    patient_id: string;
-    doctor_id: string;
-    type: string;
-    price: string;
-    status: UIStatus;
-    notes?: string;
-    service_id?: string;
-  }>({
+  const [form, setForm] = useState({
+    patient_id: "",
+    doctor_ids: [] as string[],
     date: "",
     time: "",
-    patient_id: "",
-    doctor_id: "",
     type: "",
     price: "",
-    status: "agendado",
     notes: "",
-    service_id: undefined,
+    status: "agendado" as UIStatus,
   });
 
-  // ----------------- edição rápida -----------------
-  const [editForm, setEditForm] = useState<{
-    date: string;
-    time: string;
-    patient_id: string;
-    doctor_id: string;
-    type: string;
-    price: string;
-    status: UIStatus;
-    notes?: string;
-    service_id?: string;
-  }>({
-    date: "",
-    time: "",
-    patient_id: "",
-    doctor_id: "",
-    type: "",
-    price: "",
-    status: "agendado",
-    notes: "",
-    service_id: undefined,
+  /* ======================================================
+     HELPERS
+  ====================================================== */
+  const getPaciente = (id: string) => patients.find((p) => p.id === id)?.name || "Paciente";
+  const getMedico = (id: string) => doctors.find((d) => d.id === id)?.name || "Médico";
+
+  const duracaoServico = (type: string) => services.find((s) => s.name === type)?.duration ?? 60;
+
+  const toISO = (date: string, time: string) => `${date}T${time.length === 5 ? `${time}:00` : time}`;
+
+ const getAllDoctors = (apt: AptLike) => {
+  const ids = new Set<string>();
+
+  if (apt.doctor_id) {
+    ids.add(apt.doctor_id);
+  }
+
+  const extras = apt.doctor_ids ?? apt.doctors ?? [];
+  extras.forEach((id) => {
+    if (id) ids.add(id);
   });
 
-  // ----------------- Combobox states -----------------
-  const [openPatientBox, setOpenPatientBox] = useState(false);
-  const [openDoctorBox, setOpenDoctorBox] = useState(false);
-  const [patientQuery, setPatientQuery] = useState("");
-  const [doctorQuery, setDoctorQuery] = useState("");
+  return Array.from(ids);
+};
 
-  const [openPatientBoxEdit, setOpenPatientBoxEdit] = useState(false);
-  const [openDoctorBoxEdit, setOpenDoctorBoxEdit] = useState(false);
-  const [patientQueryEdit, setPatientQueryEdit] = useState("");
-  const [doctorQueryEdit, setDoctorQueryEdit] = useState("");
 
-  // ----------------- Quick Create Patient -----------------
-  const [qcOpen, setQcOpen] = useState(false);
-  const [qcName, setQcName] = useState("");
-  const [qcEmail, setQcEmail] = useState("");
-  const [qcPhone, setQcPhone] = useState("");
+  /* ======================================================
+     CONFLITO REAL (multimédicos)
+  ====================================================== */
+  const temConflito = (doctorIds: string[], date: string, time: string, durationMin: number, ignoreId?: string) => {
+    if (!doctorIds.length) return false;
 
-  // helpers de nomes
-  const getNomePaciente = (id: string) =>
-    allPatients.find((p) => p.id === id)?.name || "Paciente";
-  const getNomeMedico = (id: string) =>
-    doctors.find((d) => d.id === id)?.name || "Médico";
+    const inicio = new Date(`${date}T${time}`);
+    const fim = new Date(inicio);
+    fim.setMinutes(fim.getMinutes() + durationMin);
 
-  // ----------------- helpers de data/tempo -----------------
-  const pad = (n: number) => String(n).padStart(2, "0");
+    const overlap = (a1: Date, a2: Date, b1: Date, b2: Date) => a1 < b2 && a2 > b1;
 
-  const hhmmToHHmmss = (t: string) =>
-    t && t.length === 5 ? `${t}:00` : t || "00:00:00";
+    return (appointments as unknown as AptLike[]).some((apt) => {
+      if (ignoreId && apt.id === ignoreId) return false;
+      if (apt.date !== date) return false;
 
-  const toLocalDate = (dateStr: string, timeStr: string) => {
-    const [H, M, S] = hhmmToHHmmss(timeStr)
-      .split(":")
-      .map((x) => parseInt(x || "0", 10));
-    return new Date(`${dateStr}T${pad(H)}:${pad(M)}:${pad(S)}`);
+      const aptDoctors = getAllDoctors(apt);
+      const medicoEmComum = aptDoctors.some((d) => doctorIds.includes(d));
+      if (!medicoEmComum) return false;
+
+      const i = new Date(`${apt.date}T${apt.time}`);
+      const f = new Date(i);
+      f.setMinutes(f.getMinutes() + duracaoServico(apt.type));
+
+      return overlap(inicio, fim, i, f);
+    });
   };
 
-  const addMinutesLocal = (dateStr: string, timeStr: string, minutes = 60) => {
-    const d = toLocalDate(dateStr, timeStr);
-    d.setMinutes(d.getMinutes() + minutes);
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-      d.getDate()
-    )}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  };
-
-  const formatStartISO = (dateStr: string, timeStr: string) =>
-    `${dateStr}T${hhmmToHHmmss(timeStr)}`;
-
-  const serviceDurationByName = (name: string) =>
-    services.find((s) => s.name === name)?.duration ?? 60;
-
-  const serviceDurationById = (id?: string) =>
-    id ? services.find((s) => s.id === id)?.duration ?? 60 : 60;
-
-  // ----------------- filtros -----------------
+  /* ======================================================
+     FILTROS
+  ====================================================== */
   const baseFiltrada = useMemo(() => {
-    return appointments.filter((apt) => {
-      const paciente = getNomePaciente(apt.patient_id).toLowerCase();
-      const medico = getNomeMedico(apt.doctor_id).toLowerCase();
+    return (appointments as unknown as AptLike[]).filter((apt) => {
+      const paciente = getPaciente(apt.patient_id).toLowerCase();
+      const medicosTxt = getAllDoctors(apt).map(getMedico).join(" ").toLowerCase();
+      const typeTxt = (apt.type || "").toLowerCase();
 
       const statusUI = toUiStatus(apt.status);
 
       const buscaOk =
         !busca ||
         paciente.includes(busca.toLowerCase()) ||
-        medico.includes(busca.toLowerCase()) ||
-        apt.type.toLowerCase().includes(busca.toLowerCase());
-      const medicoOk =
-        filtroMedico === "all" ? true : apt.doctor_id === filtroMedico;
-      const statusOk =
-        filtroStatus === "all" ? true : statusUI === filtroStatus;
+        medicosTxt.includes(busca.toLowerCase()) ||
+        typeTxt.includes(busca.toLowerCase());
+
+      const medicoOk = filtroMedico === "all" ? true : getAllDoctors(apt).includes(filtroMedico);
+      const statusOk = filtroStatus === "all" ? true : statusUI === filtroStatus;
       const dataOk = !filtroData || apt.date === filtroData;
+
       return buscaOk && medicoOk && statusOk && dataOk;
     });
   }, [appointments, busca, filtroMedico, filtroStatus, filtroData]);
 
-  const contagem = useMemo(() => {
-    const init: Record<UIStatus, number> = {
-      agendado: 0,
-      confirmado: 0,
-      realizado: 0,
-      cancelado: 0,
-    };
-    return baseFiltrada.reduce((acc, a) => {
-      const statusUI = toUiStatus(a.status);
-      acc[statusUI] += 1;
-      return acc;
-    }, init);
-  }, [baseFiltrada]);
-
-  // ----------------- eventos p/ FullCalendar -----------------
+  /* ======================================================
+     EVENTOS CALENDÁRIO (estilo Excel)
+  ====================================================== */
   const eventos = useMemo(() => {
     return baseFiltrada.map((apt) => {
-      const start = formatStartISO(apt.date, apt.time);
-      const durMin = serviceDurationByName(apt.type);
-      const end = addMinutesLocal(apt.date, apt.time, durMin);
+      const duration = duracaoServico(apt.type);
+      const conflito = temConflito(getAllDoctors(apt), apt.date, apt.time, duration, apt.id);
       const statusUI = toUiStatus(apt.status);
+
+      // cores discretas (parecido com planilha, sem “neon”)
+      const cor =
+        conflito
+          ? "#B91C1C" // vermelho discreto
+          : statusUI === "confirmado"
+          ? "#4C1D95" // roxo escuro
+          : statusUI === "realizado"
+          ? "#065F46" // verde escuro
+          : statusUI === "cancelado"
+          ? "#374151" // cinza escuro
+          : "#92400E"; // amarelo/âmbar escuro
 
       return {
         id: apt.id,
-        title: `${getNomePaciente(apt.patient_id)} • ${apt.type}`,
-        start,
-        end,
-        allDay: false,
-        extendedProps: { ...apt, status: statusUI },
-        backgroundColor:
-          statusUI === "confirmado"
-            ? "#A78BFA"
-            : statusUI === "realizado"
-            ? "#34D399"
-            : statusUI === "cancelado"
-            ? "#F87171"
-            : "#FBBF24",
-        borderColor: "transparent",
-        textColor: "#1F2937",
-        classNames: ["rounded-md", "shadow-sm", "text-sm", "font-medium"],
+        title: `${getPaciente(apt.patient_id)} • ${apt.type}`,
+        start: toISO(apt.date, apt.time),
+        end: new Date(new Date(`${apt.date}T${apt.time}`).getTime() + duration * 60000).toISOString(),
+        extendedProps: { ...apt, _conflito: conflito, _statusUI: statusUI },
+        backgroundColor: cor,
+        borderColor: cor,
+        textColor: "#FFFFFF",
+        classNames: ["excel-event"],
       };
     });
-  }, [baseFiltrada, allPatients, services]);
+  }, [baseFiltrada, services, appointments]);
 
-  // ----------------- conflito médico/horário -----------------
-  const temConflito = (
-    doctor_id: string,
-    date: string,
-    time: string,
-    durationMin: number,
-    ignoreId?: string
-  ) => {
-    const novoStart = toLocalDate(date, time);
-    const novoEnd = toLocalDate(date, time);
-    novoEnd.setMinutes(novoEnd.getMinutes() + durationMin);
-
-    const overlap = (a1: Date, a2: Date, b1: Date, b2: Date) =>
-      a1 < b2 && a2 > b1;
-
-    return appointments.some((apt) => {
-      if (ignoreId && apt.id === ignoreId) return false;
-      if (apt.doctor_id !== doctor_id || apt.date !== date) return false;
-      const dur = serviceDurationByName(apt.type);
-      const exStart = toLocalDate(apt.date, apt.time);
-      const exEnd = toLocalDate(apt.date, apt.time);
-      exEnd.setMinutes(exEnd.getMinutes() + dur);
-      return overlap(novoStart, novoEnd, exStart, exEnd);
+  /* ======================================================
+     AÇÕES
+  ====================================================== */
+  const abrirNovo = () => {
+    setEventoSelecionado(null);
+    setEditando(false);
+    setAdicionando(true);
+    setForm({
+      patient_id: "",
+      doctor_ids: [],
+      date: "",
+      time: "",
+      type: "",
+      price: "",
+      notes: "",
+      status: "agendado",
     });
   };
 
-  // ----------------- salvar novo agendamento -----------------
-  const salvarNovo = async () => {
-    const {
-      date, time, patient_id, doctor_id, type, price, status, notes, service_id,
-    } = novoAgendamento;
+  const abrirDetalhes = (apt: AptLike) => {
+    setAdicionando(false);
+    setEditando(false);
+    setEventoSelecionado(apt);
+  };
 
-    if (!date || !time || !patient_id || !doctor_id || !type) {
-      toast.error("❌ Preencha todos os campos obrigatórios.");
+  const abrirEditar = (apt: AptLike) => {
+    setAdicionando(false);
+    setEditando(true);
+    setEventoSelecionado(apt);
+
+    // mantém a regra: 1º médico = principal
+    const all = getAllDoctors(apt);
+    setForm({
+      patient_id: apt.patient_id || "",
+      doctor_ids: all,
+      date: apt.date || "",
+      time: apt.time || "",
+      type: apt.type || "",
+      price: apt.price !== undefined && apt.price !== null ? String(apt.price) : "",
+      notes: apt.notes || "",
+      status: toUiStatus(apt.status),
+    });
+  };
+
+  const fecharPainel = () => {
+    setEventoSelecionado(null);
+    setAdicionando(false);
+    setEditando(false);
+  };
+
+  async function salvarNovo() {
+    if (!form.patient_id || !form.date || !form.time || !form.type || form.doctor_ids.length === 0) {
+      toast.error("Preencha os campos obrigatórios");
       return;
     }
 
-    const duration = service_id
-      ? serviceDurationById(service_id)
-      : serviceDurationByName(type);
+    const duration = duracaoServico(form.type);
+    if (temConflito(form.doctor_ids, form.date, form.time, duration)) {
+      toast.error("Conflito de horário entre médicos");
+      return;
+    }
 
-    if (temConflito(doctor_id, date, time, duration)) {
-      toast.error("⚠️ Conflito: já existe um agendamento para este médico neste horário.");
+    // ✅ IMPORTANTE: seu BD exige doctor_id NOT NULL
+    const doctor_id = form.doctor_ids[0];
+    if (!doctor_id) {
+      toast.error("Selecione ao menos 1 médico (principal).");
       return;
     }
 
     const ok = await addAppointment({
-      date,
-      time,
-      patient_id,
-      doctor_id,
-      type,
-      price: parseFloat(price) || 0,
-      status: toDbStatus(status),
-      notes,
+      patient_id: form.patient_id,
+      doctor_id, // obrigatório no appointments
+      doctor_ids: form.doctor_ids, // relação na appointment_doctors (contexto)
+      date: form.date,
+      time: form.time,
+      type: form.type,
+      price: Number(form.price) || 0,
+      notes: form.notes,
+      status: toDbStatus(form.status),
     } as any);
 
     if (ok) {
-      toast.success("✅ Novo agendamento criado!");
-      setNovoAgendamento({
-        date: "",
-        time: "",
-        patient_id: "",
-        doctor_id: "",
-        type: "",
-        price: "",
-        status: "agendado",
-        notes: "",
-        service_id: undefined,
-      });
-      setAdicionando(false);
+      toast.success("Agendamento criado");
+      fecharPainel();
     } else {
-      toast.error("❌ Erro ao criar agendamento.");
+      toast.error("Erro ao criar agendamento");
     }
-  };
+  }
 
-  // ----------------- salvar edição rápida -----------------
-  const salvarEdicao = async () => {
+  async function salvarEdicao() {
     if (!eventoSelecionado) return;
 
-    const {
-      date, time, patient_id, doctor_id, type, price, status, notes, service_id,
-    } = editForm;
-
-    if (!date || !time || !patient_id || !doctor_id || !type) {
-      toast.error("❌ Preencha todos os campos obrigatórios.");
+    if (!form.patient_id || !form.date || !form.time || !form.type || form.doctor_ids.length === 0) {
+      toast.error("Preencha os campos obrigatórios");
       return;
     }
 
-    const duration = service_id
-      ? serviceDurationById(service_id)
-      : serviceDurationByName(type);
-
-    if (temConflito(doctor_id, date, time, duration, eventoSelecionado.id)) {
-      toast.error("⚠️ Conflito: já existe um agendamento para este médico neste horário.");
+    const duration = duracaoServico(form.type);
+    if (temConflito(form.doctor_ids, form.date, form.time, duration, eventoSelecionado.id)) {
+      toast.error("Conflito de horário entre médicos");
       return;
     }
 
-    const statusDb: DBStatus = toDbStatus(status);
+    const doctor_id = form.doctor_ids[0];
+    if (!doctor_id) {
+      toast.error("Selecione ao menos 1 médico (principal).");
+      return;
+    }
 
-    const success = await updateAppointment(String(eventoSelecionado.id), {
-      date,
-      time,
-      patient_id,
+    const ok = await updateAppointment(eventoSelecionado.id, {
+      patient_id: form.patient_id,
       doctor_id,
-      type,
-      price: parseFloat(price) || 0,
-      status: statusDb,
-      notes,
-    });
+      doctor_ids: form.doctor_ids,
+      date: form.date,
+      time: form.time,
+      type: form.type,
+      price: Number(form.price) || 0,
+      notes: form.notes,
+      status: toDbStatus(form.status),
+    } as any);
 
-    if (success) {
-      toast.success("✅ Agendamento atualizado!");
+    if (ok) {
+      toast.success("Agendamento atualizado");
+      setEventoSelecionado((old) =>
+        old
+          ? ({
+              ...old,
+              patient_id: form.patient_id,
+              doctor_id,
+              doctor_ids: form.doctor_ids,
+              date: form.date,
+              time: form.time,
+              type: form.type,
+              price: Number(form.price) || 0,
+              notes: form.notes,
+              status: toDbStatus(form.status),
+            } as AptLike)
+          : old
+      );
       setEditando(false);
-      const statusUi = toUiStatus(statusDb);
-      setEventoSelecionado((old: any) => ({
-        ...(old ?? {}),
-        date, time, patient_id, doctor_id, type,
-        price: parseFloat(price) || 0,
-        status: statusUi,
-        notes,
-      }));
     } else {
-      toast.error("❌ Erro ao atualizar agendamento.");
+      toast.error("Erro ao atualizar agendamento");
     }
-  };
+  }
 
-  // ----------------- Quick Create Patient helpers -----------------
-  const normalize = (s: string) =>
-    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  async function excluirSelecionado() {
+    if (!eventoSelecionado) return;
+    if (!confirm("Excluir este agendamento?")) return;
 
-  const genEmailFromName = (name: string) => {
-    const parts = normalize(name).trim().split(/\s+/);
-    const first = (parts[0] || "usuario").replace(/[^a-z0-9]/g, "");
-    const second = (parts[1] || "").replace(/[^a-z0-9]/g, "");
-    const base = `${first}${second}` || "usuario";
-    const rand = Math.floor(100 + Math.random() * 900);
-    return `${base}${rand}@neurointegrar.com`;
-  };
-
-  const quickCreatePatient = async (prefillName?: string) => {
-    const name = (qcName || prefillName || "").trim();
-    if (!name) {
-      toast.error("Informe ao menos o nome.");
-      return;
+    const ok = await deleteAppointment(eventoSelecionado.id);
+    if (ok) {
+      toast.success("Agendamento excluído");
+      fecharPainel();
+    } else {
+      toast.error("Erro ao excluir");
     }
+  }
 
-    const email = (qcEmail || genEmailFromName(name)).toLowerCase();
-    const phone = qcPhone || "";
+  /* ======================================================
+     CONFLITO DO FORM (real-time)
+  ====================================================== */
+  const conflitoForm = useMemo(() => {
+    if (!form.date || !form.time || !form.type || form.doctor_ids.length === 0) return false;
+    const duration = duracaoServico(form.type);
 
-    // 1) cria usuário (paciente)
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .insert([{ name, email, phone, role: "paciente", is_active: true }])
-      .select()
-      .single();
-
-    if (userError || !userData) {
-      toast.error(`Erro ao cadastrar usuário: ${userError?.message || ""}`);
-      return;
+    if (editando && eventoSelecionado?.id) {
+      return temConflito(form.doctor_ids, form.date, form.time, duration, eventoSelecionado.id);
     }
+    return temConflito(form.doctor_ids, form.date, form.time, duration);
+  }, [form, editando, eventoSelecionado, services, appointments]);
 
-    // 2) cria ficha patients (vazia)
-    const { data: patData, error: patError } = await supabase
-      .from("patients")
-      .insert([{ user_id: userData.id }])
-      .select()
-      .single();
-
-    if (patError || !patData) {
-      toast.error(`Erro ao criar ficha do paciente: ${patError?.message || ""}`);
-      return;
-    }
-
-    // 3) já coloca na lista local para usar na hora
-    setExtraPatients((prev) => [
-      ...prev,
-      { id: userData.id, name: userData.name, email: userData.email, phone: userData.phone },
-    ]);
-
-    // se estamos no modo de criação, seta o patient_id atual
-    if (adicionando) {
-      setNovoAgendamento((s) => ({ ...s, patient_id: userData.id }));
-    }
-    if (editando) {
-      setEditForm((s) => ({ ...s, patient_id: userData.id }));
-    }
-
-    setQcOpen(false);
-    setQcName("");
-    setQcEmail("");
-    setQcPhone("");
-    toast.success("✅ Paciente cadastrado!");
-  };
-
-  // ----------------- UI -----------------
-  const statusChips: { key: UIStatus; label: string; dot: string }[] = [
-    { key: "agendado", label: "Agendado", dot: "🟡" },
-    { key: "confirmado", label: "Confirmado", dot: "💜" },
-    { key: "realizado", label: "Realizado", dot: "💚" },
-    { key: "cancelado", label: "Cancelado", dot: "❤️" },
+  /* ======================================================
+     UI (filtros/status)
+  ====================================================== */
+  const statusOptions: { key: UIStatus; label: string }[] = [
+    { key: "agendado", label: "Agendado" },
+    { key: "confirmado", label: "Confirmado" },
+    { key: "realizado", label: "Realizado" },
+    { key: "cancelado", label: "Cancelado" },
   ];
 
-  // Filtrar itens do combobox
-  const filteredPatientsForBox = useMemo(() => {
-    const q = patientQuery.trim().toLowerCase();
-    if (!q) return allPatients;
-    return allPatients.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.email || "").toLowerCase().includes(q) ||
-      (p.phone || "").toLowerCase().includes(q)
-    );
-  }, [allPatients, patientQuery]);
-
-  const filteredDoctorsForBox = useMemo(() => {
-    const q = doctorQuery.trim().toLowerCase();
-    if (!q) return doctors;
-    return doctors.filter(d =>
-      d.name.toLowerCase().includes(q)
-    );
-  }, [doctors, doctorQuery]);
-
-  const filteredPatientsForBoxEdit = useMemo(() => {
-    const q = patientQueryEdit.trim().toLowerCase();
-    if (!q) return allPatients;
-    return allPatients.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      (p.email || "").toLowerCase().includes(q) ||
-      (p.phone || "").toLowerCase().includes(q)
-    );
-  }, [allPatients, patientQueryEdit]);
-
-  const filteredDoctorsForBoxEdit = useMemo(() => {
-    const q = doctorQueryEdit.trim().toLowerCase();
-    if (!q) return doctors;
-    return doctors.filter(d =>
-      d.name.toLowerCase().includes(q)
-    );
-  }, [doctors, doctorQueryEdit]);
+  const limparFiltros = () => {
+    setBusca("");
+    setFiltroMedico("all");
+    setFiltroStatus("all");
+    setFiltroData("");
+  };
 
   return (
-    <div className="flex h-[85vh] bg-gradient-to-r from-purple-50 to-purple-100 border rounded-xl overflow-hidden shadow-md">
-      {/* Coluna esquerda - Filtros */}
-      <aside className="w-80 bg-white border-r border-gray-200 p-5 space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-purple-700">🔎 Filtros</h2>
-          <p className="text-xs text-gray-500">Refine a visualização dos agendamentos</p>
+    <div className="flex h-[90vh] bg-white border border-gray-200 rounded-md overflow-hidden">
+      {/* ===================== ESQUERDA (Excel-like) ===================== */}
+      <aside className="w-[320px] bg-gray-50 border-r border-gray-200 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Agendamentos</h2>
+            <p className="text-[11px] text-gray-500">Layout estilo planilha</p>
+          </div>
+          <Button size="sm" className="h-8 px-3 bg-gray-900 hover:bg-gray-800 text-white" onClick={abrirNovo}>
+            <Plus className="w-4 h-4 mr-1" /> Novo
+          </Button>
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+        <div className="space-y-1">
+          <label className="text-[11px] text-gray-600">Buscar</label>
           <Input
-            placeholder="Buscar paciente, médico ou tipo..."
-            className="pl-9 border-purple-300 focus:ring-purple-500"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
+            placeholder="Paciente, médico, tipo..."
+            className="h-9 bg-white border-gray-300 focus:border-gray-500"
           />
         </div>
 
-        {/* Médico */}
-        <div className="space-y-1">
-          <label className="text-xs text-gray-500">Médico</label>
-          <Select
-            value={filtroMedico}
-            onValueChange={(val) => setFiltroMedico(val)}
-          >
-            <SelectTrigger className="border-purple-300 focus:ring-purple-500">
-              <SelectValue placeholder="Selecione o médico" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {doctors.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-[11px] text-gray-600">Médico</label>
+            <Select value={filtroMedico} onValueChange={setFiltroMedico}>
+              <SelectTrigger className="h-9 bg-white border-gray-300">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Status */}
-        <div className="space-y-2">
-          <label className="text-xs text-gray-500">Status</label>
-          <div className="grid grid-cols-2 gap-2">
-            {statusChips.map(({ key, label, dot }) => (
-              <button
-                key={key}
-                onClick={() =>
-                  setFiltroStatus((prev) => (prev === key ? "all" : key))
-                }
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left transition",
-                  filtroStatus === key
-                    ? "border-purple-600 bg-purple-50 text-purple-700"
-                    : "border-gray-200 hover:bg-gray-50"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">{dot} {label}</span>
-                  <span className="text-xs font-semibold text-gray-500">
-                    {key === "agendado" ? contagem.agendado :
-                     key === "confirmado" ? contagem.confirmado :
-                     key === "realizado" ? contagem.realizado :
-                     contagem.cancelado}
-                  </span>
-                </div>
-              </button>
-            ))}
+          <div className="space-y-1">
+            <label className="text-[11px] text-gray-600">Status</label>
+            <Select value={filtroStatus} onValueChange={(v) => setFiltroStatus(v as any)}>
+              <SelectTrigger className="h-9 bg-white border-gray-300">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {statusOptions.map((s) => (
+                  <SelectItem key={s.key} value={s.key}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {/* Data */}
         <div className="space-y-1">
-          <label className="text-xs text-gray-500">Data</label>
+          <label className="text-[11px] text-gray-600">Data</label>
           <Input
             type="date"
             value={filtroData}
             onChange={(e) => setFiltroData(e.target.value)}
-            className="border-purple-300 focus:ring-purple-500"
+            className="h-9 bg-white border-gray-300"
           />
         </div>
 
         <div className="flex gap-2">
-          <Button
-            onClick={() => setAdicionando(true)}
-            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white shadow-md"
-          >
-            <Plus className="h-4 w-4 mr-1" /> Novo Agendamento
+          <Button variant="outline" className="h-9 flex-1 border-gray-300" onClick={limparFiltros}>
+            Limpar
           </Button>
           <Button
             variant="outline"
+            className="h-9 w-[120px] border-gray-300"
             onClick={() => {
-              setBusca("");
-              setFiltroMedico("all");
-              setFiltroStatus("all");
-              setFiltroData("");
+              // atalho rápido: hoje
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, "0");
+              const dd = String(today.getDate()).padStart(2, "0");
+              setFiltroData(`${yyyy}-${mm}-${dd}`);
             }}
           >
-            Limpar
+            Hoje
           </Button>
+        </div>
+
+        <div className="rounded-md border border-gray-200 bg-white p-2">
+          <div className="text-[11px] text-gray-600 font-medium mb-1">Legenda</div>
+          <div className="grid grid-cols-2 gap-1 text-[11px] text-gray-600">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#92400E]" />
+              Agendado
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#4C1D95]" />
+              Confirmado
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#065F46]" />
+              Realizado
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#374151]" />
+              Cancelado
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#B91C1C]" />
+              Conflito
+            </div>
+          </div>
         </div>
       </aside>
 
-      {/* Coluna central - Calendário */}
-      <main className="flex-1 p-4 bg-white">
+      {/* ===================== CALENDÁRIO (Excel-like grid) ===================== */}
+      <main className="flex-1 bg-white p-2">
+        <style jsx global>{`
+          /* ======== Excel-like FullCalendar ======== */
+          .fc {
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans",
+              sans-serif;
+            font-size: 12px;
+          }
+          .fc .fc-toolbar-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #111827;
+          }
+          .fc .fc-button {
+            border-radius: 4px !important;
+            border: 1px solid #d1d5db !important;
+            background: #ffffff !important;
+            color: #111827 !important;
+            box-shadow: none !important;
+            padding: 4px 8px !important;
+            font-size: 12px !important;
+          }
+          .fc .fc-button:hover {
+            background: #f3f4f6 !important;
+          }
+          .fc .fc-button-primary:not(:disabled).fc-button-active,
+          .fc .fc-button-primary:not(:disabled):active {
+            background: #111827 !important;
+            color: #fff !important;
+            border-color: #111827 !important;
+          }
+          .fc .fc-scrollgrid,
+          .fc .fc-scrollgrid-section > * {
+            border-color: #e5e7eb !important;
+          }
+          .fc .fc-col-header-cell {
+            background: #f9fafb !important;
+          }
+          .fc .fc-col-header-cell-cushion {
+            padding: 6px 0;
+            font-weight: 600;
+            color: #374151;
+          }
+          .fc .fc-daygrid-day-number {
+            color: #374151;
+            font-size: 12px;
+          }
+          .fc .fc-timegrid-slot-label,
+          .fc .fc-timegrid-axis-cushion {
+            color: #374151;
+            font-size: 11px;
+          }
+          .fc .fc-timegrid-slot {
+            height: 26px;
+          }
+          .fc .fc-event {
+            border-radius: 2px !important;
+            border-width: 1px !important;
+          }
+          .fc .excel-event .fc-event-main {
+            padding: 2px 4px;
+          }
+        `}</style>
+
         <FullCalendar
-          key={`${appointments.length}-${filtroMedico}-${filtroStatus}-${filtroData}-${busca}`}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
+          initialView="timeGridDay"
           headerToolbar={{
             left: "prev,next today",
             center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
+            right: "timeGridDay,timeGridWeek,dayGridMonth",
           }}
-          locales={[ptBr]}
           locale="pt-br"
+          locales={[ptBr]}
           events={eventos}
-          height="100%"
+          editable
           nowIndicator
-          dayMaxEventRows={3}
-          firstDay={1}
-          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+          allDaySlot={false}
+          height="100%"
           slotMinTime="07:00:00"
           slotMaxTime="22:00:00"
-          eventClick={(info) => setEventoSelecionado(info.event.extendedProps)}
-          eventClassNames={() => ["rounded-md", "shadow-sm"]}
+          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+          // “cara de planilha”: mais linhas visíveis no mês
+          dayMaxEventRows={4}
+          // click
+          eventClick={(info) => abrirDetalhes(info.event.extendedProps as AptLike)}
+          // drag/drop com bloqueio
+          eventDrop={async (info) => {
+            const apt = info.event.extendedProps as AptLike;
+            const start = info.event.start;
+            if (!start) return;
+
+            const date = start.toISOString().slice(0, 10);
+            const time = start.toTimeString().slice(0, 5);
+
+            const duration = duracaoServico(apt.type);
+            const doctorsAll = getAllDoctors(apt);
+
+            if (temConflito(doctorsAll, date, time, duration, apt.id)) {
+              info.revert();
+              toast.error("Conflito: horário já ocupado");
+              return;
+            }
+
+            const ok = await updateAppointment(apt.id, { date, time } as any);
+            if (ok) toast.success("Horário atualizado");
+            else {
+              info.revert();
+              toast.error("Erro ao atualizar");
+            }
+          }}
+          // evento “estilo Excel”: texto compacto e objetivo
+          eventContent={(arg) => {
+            const ext = arg.event.extendedProps as any;
+            const statusUI: UIStatus = ext?._statusUI || toUiStatus(ext?.status || "pendente");
+            const conflito = !!ext?._conflito;
+
+            const timeText = arg.timeText ? `${arg.timeText} ` : "";
+            const title = arg.event.title;
+
+            return (
+              <div className="w-full">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate font-medium">
+                    {timeText}
+                    {title}
+                  </div>
+                  {conflito ? (
+                    <span className="ml-2 text-[10px] font-bold">⚠</span>
+                  ) : (
+                    <span className="ml-2 text-[10px] opacity-90">
+                      {statusUI === "agendado"
+                        ? "A"
+                        : statusUI === "confirmado"
+                        ? "C"
+                        : statusUI === "realizado"
+                        ? "R"
+                        : "X"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          }}
         />
       </main>
 
-      {/* Coluna direita - Detalhes / Formulário */}
-      {(eventoSelecionado || adicionando) && (
-        <aside className="w-[400px] bg-white border-l border-gray-200 p-5 flex flex-col shadow-inner overflow-y-auto">
-          <div className="flex justify-between items-center mb-4">
+      {/* ===================== PAINEL DIREITO (compact) ===================== */}
+      {(adicionando || eventoSelecionado) && (
+        <aside className="w-[420px] bg-white border-l border-gray-200 p-3 overflow-y-auto">
+          <div className="flex items-start justify-between gap-3 mb-3">
             <div>
-              <h2 className="text-lg font-semibold text-purple-700">
-                {adicionando
-                  ? "➕ Novo Agendamento"
-                  : editando
-                  ? "✏️ Edição Rápida"
-                  : "📋 Detalhes"}
+              <h2 className="text-sm font-semibold text-gray-900">
+                {adicionando ? "Novo Agendamento" : editando ? "Editar Agendamento" : "Detalhes"}
               </h2>
-              <p className="text-xs text-gray-500">
-                {adicionando
-                  ? "Preencha os campos e salve para criar."
-                  : editando
-                  ? "Ajuste os dados e salve as alterações."
-                  : "Informações completas do compromisso."}
+              <p className={cn("text-[11px]", conflitoForm ? "text-red-600" : "text-gray-500")}>
+                {conflitoForm ? "⚠ Conflito detectado: ajuste data/hora/médicos." : "Preencha e salve."}
               </p>
             </div>
-            <button
-              onClick={() => {
-                setEventoSelecionado(null);
-                setAdicionando(false);
-                setEditando(false);
-              }}
-            >
-              <X className="h-5 w-5 text-gray-500 hover:text-gray-700" />
+            <button onClick={fecharPainel} className="p-1 hover:bg-gray-100 rounded">
+              <X className="w-4 h-4 text-gray-600" />
             </button>
           </div>
 
-          {adicionando ? (
-            // ================== FORM NOVO ==================
+          {/* ========= FORM (novo/editar) ========= */}
+          {(adicionando || editando) && (
             <div className="space-y-3">
-              {/* Paciente (combobox) */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Paciente*</label>
-                <Popover open={openPatientBox} onOpenChange={setOpenPatientBox}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      className="w-full justify-between"
-                    >
-                      {novoAgendamento.patient_id
-                        ? getNomePaciente(novoAgendamento.patient_id)
-                        : "Selecione o paciente"}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Buscar por nome, email, telefone..."
-                        value={patientQuery}
-                        onValueChange={setPatientQuery}
-                      />
-                      <CommandList>
-                        <CommandEmpty>
-                          <div className="p-3 text-sm">
-                            Nenhum paciente encontrado.
-                            <div className="mt-2">
-                              <Button
-                                size="sm"
-                                className="w-full"
-                                onClick={() => {
-                                  setQcName(patientQuery);
-                                  setQcOpen(true);
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Cadastrar “{patientQuery || "novo"}”
-                              </Button>
-                            </div>
-                          </div>
-                        </CommandEmpty>
-                        <CommandGroup heading="Pacientes">
-                          {filteredPatientsForBox.map((p) => (
-                            <CommandItem
-                              key={p.id}
-                              value={p.id}
-                              onSelect={() => {
-                                setNovoAgendamento((s) => ({ ...s, patient_id: p.id }));
-                                setOpenPatientBox(false);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-4 w-4",
-                                  novoAgendamento.patient_id === p.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <div className="flex flex-col">
-                                <span className="text-sm">{p.name}</span>
-                                <span className="text-xs text-gray-500">{p.email || p.phone || "-"}</span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                        <div className="p-2 border-t">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => {
-                              setQcName(patientQuery);
-                              setQcOpen(true);
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Cadastrar novo paciente
-                          </Button>
-                        </div>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+              <div className={cn("rounded-md border p-2", conflitoForm ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50")}>
+                <p className="text-[11px] text-gray-700">
+                  Médicos:{" "}
+                  <span className="font-semibold">
+                    {form.doctor_ids.length ? form.doctor_ids.map(getMedico).join(", ") : "Nenhum"}
+                  </span>
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  O <b>1º</b> médico vira o <b>principal</b> (campo obrigatório no banco).
+                </p>
               </div>
 
-              {/* Médico (combobox) */}
+              {/* PACIENTE */}
               <div className="space-y-1">
-                <label className="text-xs text-gray-500">Médico*</label>
-                <Popover open={openDoctorBox} onOpenChange={setOpenDoctorBox}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
-                      {novoAgendamento.doctor_id
-                        ? getNomeMedico(novoAgendamento.doctor_id)
-                        : "Selecione o médico"}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Buscar médico..."
-                        value={doctorQuery}
-                        onValueChange={setDoctorQuery}
-                      />
-                      <CommandList>
-                        <CommandEmpty>Nenhum médico encontrado.</CommandEmpty>
-                        <CommandGroup heading="Médicos">
-                          {filteredDoctorsForBox.map((d) => (
-                            <CommandItem
-                              key={d.id}
-                              value={d.id}
-                              onSelect={() => {
-                                setNovoAgendamento((s) => ({ ...s, doctor_id: d.id }));
-                                setOpenDoctorBox(false);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-4 w-4",
-                                  novoAgendamento.doctor_id === d.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <span className="text-sm">{d.name}</span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Serviço / Tipo */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Serviço</label>
-                <Select
-                  value={novoAgendamento.service_id || "none"}
-                  onValueChange={(val) => {
-                    if (val === "none") {
-                      setNovoAgendamento((s) => ({ ...s, service_id: undefined, type: "", price: "" }));
-                      return;
-                    }
-                    const svc = services.find((s) => s.id === val);
-                    setNovoAgendamento((s) => ({
-                      ...s,
-                      service_id: val,
-                      type: svc?.name || "",
-                      price: svc?.price !== undefined ? String(svc.price) : s.price,
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o serviço (opcional)" />
+                <label className="text-[11px] text-gray-600">Paciente*</label>
+                <Select value={form.patient_id} onValueChange={(v) => setForm((s) => ({ ...s, patient_id: v }))}>
+                  <SelectTrigger className="h-9 border-gray-300">
+                    <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {services.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} • {s.duration}min • R$ {s.price}
+                    {patients.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <Input
-                type="text"
-                placeholder="Tipo de consulta*"
-                value={novoAgendamento.type}
-                onChange={(e) => setNovoAgendamento((s) => ({ ...s, type: e.target.value }))}
-              />
-
-              {/* Data e hora */}
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="date"
-                  value={novoAgendamento.date}
-                  onChange={(e) => setNovoAgendamento((s) => ({ ...s, date: e.target.value }))}
-                />
-                <Input
-                  type="time"
-                  value={novoAgendamento.time}
-                  onChange={(e) => setNovoAgendamento((s) => ({ ...s, time: e.target.value }))}
-                />
+              {/* MÉDICOS MULTI */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-gray-600">Médicos*</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-9 w-full justify-between border-gray-300">
+                      {form.doctor_ids.length ? `${form.doctor_ids.length} selecionado(s)` : "Selecionar médicos"}
+                      <ChevronsUpDown className="w-4 h-4 opacity-60" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[360px] p-0">
+                    <Command shouldFilter={false}>
+                      <CommandList>
+                        <CommandGroup heading="Médicos">
+                          {doctors.map((d) => {
+                            const checked = form.doctor_ids.includes(d.id);
+                            return (
+                              <CommandItem
+                                key={d.id}
+                                onSelect={() => {
+                                  setForm((s) => ({
+                                    ...s,
+                                    doctor_ids: checked ? s.doctor_ids.filter((x) => x !== d.id) : [...s.doctor_ids, d.id],
+                                  }));
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <Check className={cn("w-4 h-4", checked ? "opacity-100" : "opacity-0")} />
+                                <span className="text-sm">{d.name}</span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
-              {/* Status */}
-              <div className="space-y-2">
-                <label className="text-xs text-gray-500">Status do agendamento</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {statusChips.map(({ key, label, dot }) => (
-                    <button
-                      type="button"
-                      key={key}
-                      onClick={() => setNovoAgendamento((s) => ({ ...s, status: key }))}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left transition",
-                        novoAgendamento.status === key
-                          ? "border-purple-600 bg-purple-50 text-purple-700"
-                          : "border-gray-200 hover:bg-gray-50"
-                      )}
-                    >
-                      {dot} {label}
-                    </button>
-                  ))}
+              {/* DATA/HORA */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-gray-600">Data*</label>
+                  <Input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
+                    className="h-9 border-gray-300"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-gray-600">Hora*</label>
+                  <Input
+                    type="time"
+                    value={form.time}
+                    onChange={(e) => setForm((s) => ({ ...s, time: e.target.value }))}
+                    className="h-9 border-gray-300"
+                  />
                 </div>
               </div>
 
-              {/* Valor */}
-              <Input
-                type="number"
-                placeholder="Valor (R$)"
-                value={novoAgendamento.price}
-                onChange={(e) => setNovoAgendamento((s) => ({ ...s, price: e.target.value }))}
-              />
-
-              {/* Observações */}
-              <Textarea
-                placeholder="Observações (opcional)"
-                value={novoAgendamento.notes}
-                onChange={(e) => setNovoAgendamento((s) => ({ ...s, notes: e.target.value }))}
-              />
-
-              <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white" onClick={salvarNovo}>
-                Salvar
-              </Button>
-            </div>
-          ) : editando ? (
-            // ================== FORM EDIÇÃO RÁPIDA ==================
-            <div className="space-y-3">
-              {/* Paciente (combobox) */}
+              {/* TIPO */}
               <div className="space-y-1">
-                <label className="text-xs text-gray-500">Paciente*</label>
-                <Popover open={openPatientBoxEdit} onOpenChange={setOpenPatientBoxEdit}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
-                      {editForm.patient_id ? getNomePaciente(editForm.patient_id) : "Selecione o paciente"}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Buscar por nome, email, telefone..."
-                        value={patientQueryEdit}
-                        onValueChange={setPatientQueryEdit}
-                      />
-                      <CommandList>
-                        <CommandEmpty>
-                          <div className="p-3 text-sm">
-                            Nenhum paciente encontrado.
-                            <div className="mt-2">
-                              <Button
-                                size="sm"
-                                className="w-full"
-                                onClick={() => {
-                                  setQcName(patientQueryEdit);
-                                  setQcOpen(true);
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Cadastrar “{patientQueryEdit || "novo"}”
-                              </Button>
-                            </div>
-                          </div>
-                        </CommandEmpty>
-                        <CommandGroup heading="Pacientes">
-                          {filteredPatientsForBoxEdit.map((p) => (
-                            <CommandItem
-                              key={p.id}
-                              value={p.id}
-                              onSelect={() => {
-                                setEditForm((s) => ({ ...s, patient_id: p.id }));
-                                setOpenPatientBoxEdit(false);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-4 w-4",
-                                  editForm.patient_id === p.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <div className="flex flex-col">
-                                <span className="text-sm">{p.name}</span>
-                                <span className="text-xs text-gray-500">{p.email || p.phone || "-"}</span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                        <div className="p-2 border-t">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => {
-                              setQcName(patientQueryEdit);
-                              setQcOpen(true);
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Cadastrar novo paciente
-                          </Button>
-                        </div>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <label className="text-[11px] text-gray-600">Tipo*</label>
+                <Input
+                  value={form.type}
+                  onChange={(e) => setForm((s) => ({ ...s, type: e.target.value }))}
+                  placeholder="Ex: Consulta, Avaliação..."
+                  className="h-9 border-gray-300"
+                />
+                <p className="text-[10px] text-gray-500">
+                  Duração usada p/ conflito: <b>{duracaoServico(form.type)} min</b>
+                </p>
               </div>
 
-              {/* Médico (combobox) */}
+              {/* STATUS */}
               <div className="space-y-1">
-                <label className="text-xs text-gray-500">Médico*</label>
-                <Popover open={openDoctorBoxEdit} onOpenChange={setOpenDoctorBoxEdit}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
-                      {editForm.doctor_id ? getNomeMedico(editForm.doctor_id) : "Selecione o médico"}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Buscar médico..."
-                        value={doctorQueryEdit}
-                        onValueChange={setDoctorQueryEdit}
-                      />
-                      <CommandList>
-                        <CommandEmpty>Nenhum médico encontrado.</CommandEmpty>
-                        <CommandGroup heading="Médicos">
-                          {filteredDoctorsForBoxEdit.map((d) => (
-                            <CommandItem
-                              key={d.id}
-                              value={d.id}
-                              onSelect={() => {
-                                setEditForm((s) => ({ ...s, doctor_id: d.id }));
-                                setOpenDoctorBoxEdit(false);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Check
-                                className={cn(
-                                  "h-4 w-4",
-                                  editForm.doctor_id === d.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <span className="text-sm">{d.name}</span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Serviço / Tipo */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Serviço</label>
-                <Select
-                  value={editForm.service_id || "none"}
-                  onValueChange={(val) => {
-                    if (val === "none") {
-                      setEditForm((s) => ({ ...s, service_id: undefined }));
-                      return;
-                    }
-                    const svc = services.find((s) => s.id === val);
-                    setEditForm((s) => ({
-                      ...s,
-                      service_id: val,
-                      type: svc?.name || s.type,
-                      price: svc?.price !== undefined ? String(svc.price) : s.price,
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o serviço (opcional)" />
+                <label className="text-[11px] text-gray-600">Status</label>
+                <Select value={form.status} onValueChange={(v) => setForm((s) => ({ ...s, status: v as UIStatus }))}>
+                  <SelectTrigger className="h-9 border-gray-300">
+                    <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {services.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} • {s.duration}min • R$ {s.price}
+                    {statusOptions.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
+                        {s.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <Input
-                type="text"
-                placeholder="Tipo de consulta*"
-                value={editForm.type}
-                onChange={(e) => setEditForm((s) => ({ ...s, type: e.target.value }))}
-              />
-
-              {/* Data e hora */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* VALOR */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-gray-600">Valor (R$)</label>
                 <Input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditForm((s) => ({ ...s, date: e.target.value }))}
-                />
-                <Input
-                  type="time"
-                  value={editForm.time}
-                  onChange={(e) => setEditForm((s) => ({ ...s, time: e.target.value }))}
+                  type="number"
+                  value={form.price}
+                  onChange={(e) => setForm((s) => ({ ...s, price: e.target.value }))}
+                  placeholder="0,00"
+                  className="h-9 border-gray-300"
                 />
               </div>
 
-              {/* Status */}
-              <div className="space-y-2">
-                <label className="text-xs text-gray-500">Status do agendamento</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {statusChips.map(({ key, label, dot }) => (
-                    <button
-                      type="button"
-                      key={key}
-                      onClick={() => setEditForm((s) => ({ ...s, status: key }))}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left transition",
-                        editForm.status === key
-                          ? "border-purple-600 bg-purple-50 text-purple-700"
-                          : "border-gray-200 hover:bg-gray-50"
-                      )}
-                    >
-                      {dot} {label}
-                    </button>
-                  ))}
-                </div>
+              {/* OBS */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-gray-600">Observações</label>
+                <Textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+                  placeholder="Opcional..."
+                  className="min-h-[90px] border-gray-300"
+                />
               </div>
-
-              {/* Valor */}
-              <Input
-                type="number"
-                placeholder="Valor (R$)"
-                value={editForm.price}
-                onChange={(e) => setEditForm((s) => ({ ...s, price: e.target.value }))}
-              />
-
-              {/* Observações */}
-              <Textarea
-                placeholder="Observações (opcional)"
-                value={editForm.notes}
-                onChange={(e) => setEditForm((s) => ({ ...s, notes: e.target.value }))}
-              />
 
               <div className="flex gap-2">
-                <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={salvarEdicao}>
-                  Salvar alterações
+                <Button
+                  className="flex-1 h-9 bg-gray-900 hover:bg-gray-800 text-white"
+                  onClick={adicionando ? salvarNovo : salvarEdicao}
+                  disabled={conflitoForm}
+                >
+                  {adicionando ? "Salvar" : "Salvar alterações"}
                 </Button>
-                <Button variant="outline" className="flex-1" onClick={() => setEditando(false)}>
+                <Button
+                  variant="outline"
+                  className="flex-1 h-9 border-gray-300"
+                  onClick={() => (adicionando ? fecharPainel() : setEditando(false))}
+                >
                   Cancelar
                 </Button>
               </div>
             </div>
-          ) : (
-            // ================== DETALHES ==================
-            <>
-              <div className="space-y-1 text-sm">
-                <p><strong>Paciente:</strong> {getNomePaciente(eventoSelecionado.patient_id)}</p>
-                <p><strong>Médico:</strong> {getNomeMedico(eventoSelecionado.doctor_id)}</p>
-                <p><strong>Data:</strong> {eventoSelecionado.date}</p>
-                <p><strong>Hora:</strong> {eventoSelecionado.time}</p>
-                <p><strong>Tipo:</strong> {eventoSelecionado.type}</p>
-                <p><strong>Status:</strong> {toUiStatus(eventoSelecionado.status)}</p>
-                <p><strong>Valor:</strong> R$ {eventoSelecionado.price}</p>
+          )}
+
+          {/* ========= DETALHES ========= */}
+          {!adicionando && !editando && eventoSelecionado && (
+            <div className="space-y-3">
+              <div className="rounded-md border border-gray-200 p-3">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="col-span-2">
+                    <div className="text-[11px] text-gray-500">Paciente</div>
+                    <div className="font-medium text-gray-900">{getPaciente(eventoSelecionado.patient_id)}</div>
+                  </div>
+
+                  <div className="col-span-2">
+                    <div className="text-[11px] text-gray-500">Médicos</div>
+                    <div className="font-medium text-gray-900">
+                      {getAllDoctors(eventoSelecionado).map(getMedico).join(", ")}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-gray-500">Data</div>
+                    <div className="font-medium text-gray-900">{eventoSelecionado.date}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-gray-500">Hora</div>
+                    <div className="font-medium text-gray-900">{eventoSelecionado.time}</div>
+                  </div>
+
+                  <div className="col-span-2">
+                    <div className="text-[11px] text-gray-500">Tipo</div>
+                    <div className="font-medium text-gray-900">{eventoSelecionado.type}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-gray-500">Status</div>
+                    <div className="font-medium text-gray-900">{toUiStatus(eventoSelecionado.status)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-gray-500">Valor</div>
+                    <div className="font-medium text-gray-900">
+                      R$ {Number(eventoSelecionado.price || 0).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {!!(eventoSelecionado as any)._conflito && (
+                  <div className="mt-3 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+                    ⚠️ CONFLITO DETECTADO
+                  </div>
+                )}
+
                 {eventoSelecionado.notes ? (
-                  <p className="mt-2"><strong>Obs.:</strong> {eventoSelecionado.notes}</p>
+                  <div className="mt-3">
+                    <div className="text-[11px] text-gray-500">Observações</div>
+                    <div className="text-sm text-gray-900 whitespace-pre-wrap">{eventoSelecionado.notes}</div>
+                  </div>
                 ) : null}
               </div>
 
-              <div className="mt-6 flex gap-2">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  className="flex-1 border-purple-600 text-purple-700 hover:bg-purple-50"
-                  onClick={() => {
-                    const e = eventoSelecionado;
-                    setEditForm({
-                      date: e.date || "",
-                      time: e.time || "",
-                      patient_id: e.patient_id || "",
-                      doctor_id: e.doctor_id || "",
-                      type: e.type || "",
-                      price: e.price !== undefined && e.price !== null ? String(e.price) : "",
-                      status: toUiStatus(e.status),
-                      notes: e.notes || "",
-                      service_id: undefined,
-                    });
-                    setEditando(true);
-                  }}
+                  className="flex-1 h-9 border-gray-300"
+                  onClick={() => abrirEditar(eventoSelecionado)}
                 >
+                  <Pencil className="w-4 h-4 mr-2" />
                   Editar
                 </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={async () => {
-                    if (confirm("Excluir este agendamento?")) {
-                      const ok = await deleteAppointment(eventoSelecionado.id);
-                      if (ok) {
-                        toast.success("Agendamento excluído.");
-                        setEventoSelecionado(null);
-                      } else {
-                        toast.error("Erro ao excluir agendamento.");
-                      }
-                    }
-                  }}
-                >
+
+                <Button variant="destructive" className="flex-1 h-9" onClick={excluirSelecionado}>
+                  <Trash2 className="w-4 h-4 mr-2" />
                   Excluir
                 </Button>
               </div>
-            </>
+            </div>
           )}
         </aside>
       )}
-
-      {/* Dialog: Quick Create Paciente */}
-      <Dialog open={qcOpen} onOpenChange={setQcOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Cadastrar Paciente</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Input placeholder="Nome completo *" value={qcName} onChange={(e) => setQcName(e.target.value)} />
-            <Input placeholder="Email (opcional)" value={qcEmail} onChange={(e) => setQcEmail(e.target.value)} />
-            <Input placeholder="Telefone (opcional)" value={qcPhone} onChange={(e) => setQcPhone(e.target.value)} />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setQcOpen(false)}>Cancelar</Button>
-              <Button className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => quickCreatePatient()}>
-                Salvar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,0 +1,29 @@
+{
+  "name": "Neuro Integrar",
+  "short_name": "NeuroIntegrar",
+  "description": "Sistema completo para gestão de clínicas neurológicas com IA e integração Supabase.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["medical", "productivity", "business"],
+  "lang": "pt-BR",
+  "dir": "ltr"
+}

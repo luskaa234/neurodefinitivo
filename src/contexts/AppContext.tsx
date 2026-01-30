@@ -646,6 +646,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (error || !apt) throw error;
 
+      // cria registro financeiro pendente
+      await supabase.from("financial_records").insert([
+        {
+          type: "receita",
+          amount: Number(base.price) || 0,
+          description: `Consulta: ${base.type}`,
+          category: "Consulta",
+          date: base.date,
+          appointment_id: apt.id,
+          status: "pendente",
+        },
+      ]);
+
       // 🔥 salva relações (multi)
       await syncAppointmentPatients(apt.id, patientIds);
       await syncAppointmentDoctors(apt.id, doctorIds);
@@ -704,6 +717,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id);
 
       if (error) throw error;
+
+      // atualiza financeiro quando houver mudança relevante
+      if (patch.price !== undefined || patch.status !== undefined) {
+        const finStatus =
+          patch.status === "cancelado" ? "cancelado" : "pendente";
+        await supabase
+          .from("financial_records")
+          .update({
+            amount: patch.price !== undefined ? Number(patch.price) || 0 : undefined,
+            status: finStatus,
+          })
+          .eq("appointment_id", id);
+      }
 
       // 🔥 se vierem relações, sincroniza
       if (patientIds) await syncAppointmentPatients(id, patientIds);

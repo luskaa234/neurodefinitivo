@@ -117,6 +117,11 @@ interface AppContextType {
 
   reloadAll: () => Promise<void>;
 
+  addUser: (
+    data: Omit<User, "id" | "created_at"> & { password?: string },
+    password?: string
+  ) => Promise<boolean>;
+
   // ⚠️ Aqui aceitamos patient_ids/doctor_ids opcionais para multi seleção
   addAppointment: (
     data: Omit<Appointment, "id" | "created_at"> & {
@@ -341,6 +346,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
      CRUD (COM MULTI RELAÇÕES)
 ====================================================== */
 
+  const addUser: AppContextType["addUser"] = async (data, password) => {
+    try {
+      const { password: dataPassword, ...rest } = data as any;
+      const payload = { ...rest };
+      void dataPassword;
+      void password;
+
+      const { data: created, error } = await supabase
+        .from("users")
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error || !created) throw error;
+
+      await loadAll();
+      return true;
+    } catch (err: any) {
+      console.error("addUser:", err?.message || err);
+      return false;
+    }
+  };
+
   const addAppointment: AppContextType["addAppointment"] = async (data) => {
     try {
       // ✅ aceita payload do ExcelScheduleGrid (que pode vir com patient_ids/doctor_ids)
@@ -471,6 +499,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         loading,
         error,
         reloadAll: loadAll,
+        addUser,
         addAppointment,
         updateAppointment,
         deleteAppointment,

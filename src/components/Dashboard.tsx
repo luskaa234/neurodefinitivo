@@ -61,7 +61,7 @@ export function Dashboard() {
   }, [user?.role, user?.id]);
 
   React.useEffect(() => {
-    if (user?.role !== 'agendamento') return;
+    if (user?.role !== 'agendamento' && user?.role !== 'admin') return;
     const loadSchedulerNotifications = () => {
       const raw = localStorage.getItem('scheduler-notifications');
       if (!raw) {
@@ -483,7 +483,7 @@ export function Dashboard() {
         </Card>
       )}
 
-      {user?.role === 'agendamento' && (
+      {(user?.role === 'agendamento' || user?.role === 'admin') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>

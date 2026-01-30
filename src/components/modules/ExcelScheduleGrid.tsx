@@ -889,7 +889,7 @@ export default function ExcelScheduleGrid() {
                       className="h-7 px-2"
                       onClick={() => openEditById(n.appointment_id)}
                     >
-                      Reagendar
+                      Reagendar agora
                     </Button>
                     <Button
                       type="button"

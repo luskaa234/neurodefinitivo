@@ -108,6 +108,27 @@ export function DoctorConsultations() {
     localStorage.setItem('doctor-justifications', JSON.stringify(newJustifications));
   };
 
+  const deleteJustification = (justificationId: string, appointmentId?: string) => {
+    if (!window.confirm('Excluir esta falta justificada?')) return;
+    const updated = justifications.filter((j) => j.id !== justificationId);
+    saveJustifications(updated);
+    if (appointmentId) {
+      const raw = localStorage.getItem('scheduler-notifications');
+      if (raw) {
+        try {
+          const list = JSON.parse(raw);
+          const next = Array.isArray(list)
+            ? list.filter((n: any) => n.appointment_id !== appointmentId)
+            : [];
+          localStorage.setItem('scheduler-notifications', JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      }
+    }
+    toast.success('Falta justificada excluída.');
+  };
+
   const myAppointments = appointments.filter((apt) =>
     apt.doctor_id === user?.id || (apt.doctor_ids || []).includes(user?.id || "")
   );
@@ -609,6 +630,7 @@ export function DoctorConsultations() {
                     <TableHead>Motivo</TableHead>
                     <TableHead>Descrição</TableHead>
                     <TableHead>Data da Justificativa</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -638,6 +660,15 @@ export function DoctorConsultations() {
                           </TableCell>
                           <TableCell>
                             {new Date(justification.created_at).toLocaleDateString('pt-BR')}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => deleteJustification(justification.id, justification.appointment_id)}
+                            >
+                              Excluir
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );

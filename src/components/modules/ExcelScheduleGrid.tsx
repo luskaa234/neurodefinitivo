@@ -641,7 +641,8 @@ export default function ExcelScheduleGrid() {
         setDoctorSchedule([]);
         return;
       }
-      const parsed = data?.horarios ? JSON.parse(data.horarios) : [];
+      const horarios = data?.horarios;
+      const parsed = horarios ? JSON.parse(horarios) : [];
       setDoctorSchedule(Array.isArray(parsed) ? parsed : []);
     };
     loadSchedule();

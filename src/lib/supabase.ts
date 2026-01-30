@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // Carregar variáveis de ambiente
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -31,6 +31,33 @@ export interface Database {
         };
         Insert: Omit<Database["public"]["Tables"]["users"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["users"]["Row"]>;
+      };
+      medicos: {
+        Row: {
+          id: string;
+          user_id: string;
+          crm: string;
+          specialty: string;
+          horarios: string;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["medicos"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["medicos"]["Row"]>;
+      };
+      patients: {
+        Row: {
+          id: string;
+          user_id: string;
+          cpf: string;
+          birth_date: string | null;
+          address: string;
+          responsavel: string;
+          tipo_atendimento: string;
+          valor_mensal: number | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["patients"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["patients"]["Row"]>;
       };
       appointments: {
         Row: {
@@ -108,7 +135,10 @@ export interface Database {
 }
 
 // Criar cliente Supabase tipado
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase: SupabaseClient<Database> = createClient<Database>(
+  supabaseUrl,
+  supabaseAnonKey
+);
 
 // Log de inicialização
 console.log("🔧 Supabase configurado:", {

@@ -38,7 +38,7 @@ export interface Database {
           user_id: string;
           crm: string;
           specialty: string;
-          horarios: string;
+          horarios: string | null;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["medicos"]["Row"], "id" | "created_at">;

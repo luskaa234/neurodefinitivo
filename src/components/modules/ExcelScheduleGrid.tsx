@@ -66,6 +66,12 @@ type AptLike = {
 
 };
 
+type MedicoHorario = {
+  day_of_week: number | string;
+  start_time: string;
+  end_time: string;
+};
+
 type FormState = {
   patient_ids: string[];
   doctor_ids: string[];
@@ -100,6 +106,28 @@ const toShortDate = (d: Date) =>
   `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
 
 const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
+
+const isMedicoHorario = (value: any): value is MedicoHorario =>
+  value &&
+  typeof value === "object" &&
+  "day_of_week" in value &&
+  "start_time" in value &&
+  "end_time" in value;
+
+const parseMedicoHorarios = (value: unknown): MedicoHorario[] => {
+  if (Array.isArray(value)) {
+    return value.filter(isMedicoHorario);
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(isMedicoHorario) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 
 const hashColor = (id: string) => {
   // cor determinística por id (médico principal)
@@ -166,9 +194,7 @@ export default function ExcelScheduleGrid() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getWeekStart(new Date()));
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
-  const [doctorSchedule, setDoctorSchedule] = useState<
-    Array<{ day_of_week: string; start_time: string; end_time: string }>
-  >([]);
+  const [doctorSchedule, setDoctorSchedule] = useState<MedicoHorario[]>([]);
   const [quickDoctorName, setQuickDoctorName] = useState("");
   const [isCreatingDoctor, setIsCreatingDoctor] = useState(false);
   const [quickPatientName, setQuickPatientName] = useState("");
@@ -641,9 +667,7 @@ export default function ExcelScheduleGrid() {
         setDoctorSchedule([]);
         return;
       }
-      const horarios = data?.horarios;
-      const parsed = horarios ? JSON.parse(horarios) : [];
-      setDoctorSchedule(Array.isArray(parsed) ? parsed : []);
+      setDoctorSchedule(parseMedicoHorarios(data?.horarios));
     };
     loadSchedule();
   }, [selectedDoctorId]);

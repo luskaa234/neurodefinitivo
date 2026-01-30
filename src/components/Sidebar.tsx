@@ -50,7 +50,11 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
     const updateSettings = () => setAppSettings(loadStoredSettings());
     updateSettings();
     window.addEventListener("storage", updateSettings);
-    return () => window.removeEventListener("storage", updateSettings);
+    window.addEventListener("app-settings-updated", updateSettings);
+    return () => {
+      window.removeEventListener("storage", updateSettings);
+      window.removeEventListener("app-settings-updated", updateSettings);
+    };
   }, []);
 
   const getMenuItems = () => {

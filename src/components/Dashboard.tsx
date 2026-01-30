@@ -38,6 +38,7 @@ export function Dashboard() {
     message: string;
     created_at: string;
   }>>([]);
+  const [schedulerNotifications, setSchedulerNotifications] = useState<any[]>([]);
 
   React.useEffect(() => {
     if (user?.role !== 'medico' || !user.id) return;
@@ -58,6 +59,26 @@ export function Dashboard() {
     window.addEventListener('storage', loadNotifications);
     return () => window.removeEventListener('storage', loadNotifications);
   }, [user?.role, user?.id]);
+
+  React.useEffect(() => {
+    if (user?.role !== 'agendamento') return;
+    const loadSchedulerNotifications = () => {
+      const raw = localStorage.getItem('scheduler-notifications');
+      if (!raw) {
+        setSchedulerNotifications([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        setSchedulerNotifications(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setSchedulerNotifications([]);
+      }
+    };
+    loadSchedulerNotifications();
+    window.addEventListener('storage', loadSchedulerNotifications);
+    return () => window.removeEventListener('storage', loadSchedulerNotifications);
+  }, [user?.role]);
 
   const today = new Date();
   const baseAppointments = Array.isArray(appointments)
@@ -454,6 +475,39 @@ export function Dashboard() {
                       </span>
                     </div>
                     <p className="mt-2 text-gray-700">{note.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {user?.role === 'agendamento' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Reagendamentos Pendentes</CardTitle>
+              <CardDescription>Consultas canceladas com falta justificada</CardDescription>
+            </div>
+            <Badge variant="secondary">{schedulerNotifications.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {schedulerNotifications.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhuma consulta aguardando reagendamento.</p>
+            ) : (
+              <div className="space-y-3">
+                {schedulerNotifications.slice(0, 4).map((note) => (
+                  <div key={note.id} className="rounded-lg border p-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{note.patient_name} × {note.doctor_name}</span>
+                      <span className="text-xs text-gray-500">
+                        {new Date(note.created_at).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-gray-700">
+                      Consulta cancelada em {note.date} {note.time} — Motivo: {note.reason || 'Falta justificada'}
+                    </p>
                   </div>
                 ))}
               </div>

@@ -236,6 +236,7 @@ export default function ExcelScheduleGrid() {
   const [quickPatientName, setQuickPatientName] = useState("");
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
   const [autoWhatsApp, setAutoWhatsApp] = useState(false);
+  const [schedulerNotifications, setSchedulerNotifications] = useState<any[]>([]);
   const [workingHours, setWorkingHours] = useState<{ start: string; end: string }>({
     start: "08:00",
     end: "21:00",
@@ -450,6 +451,25 @@ export default function ExcelScheduleGrid() {
     setPanelOpen(true);
   };
 
+  const openEditById = (appointmentId?: string) => {
+    if (!appointmentId) return;
+    const apt = (appointments as unknown as AptLike[]).find((a) => a.id === appointmentId);
+    if (apt) {
+      openEdit(apt);
+    }
+  };
+
+  const resolveSchedulerNotification = (appointmentId?: string) => {
+    if (!appointmentId || typeof window === "undefined") return;
+    const raw = localStorage.getItem("scheduler-notifications");
+    const list = raw ? JSON.parse(raw) : [];
+    const next = Array.isArray(list)
+      ? list.filter((n: any) => n.appointment_id !== appointmentId)
+      : [];
+    localStorage.setItem("scheduler-notifications", JSON.stringify(next));
+    setSchedulerNotifications(next);
+  };
+
   const validate = () => {
   if (form.patient_ids.length === 0) return "Selecione ao menos 1 paciente";
   if (form.doctor_ids.length === 0) return "Selecione ao menos 1 médico";
@@ -488,6 +508,9 @@ export default function ExcelScheduleGrid() {
         : await addAppointment(payload as any);
 
     if (ok) {
+      if (isReschedule && selected?.id) {
+        resolveSchedulerNotification(selected.id);
+      }
       toast.success(editing ? "Agendamento atualizado" : "Agendamento criado");
       closePanel();
     } else {
@@ -767,6 +790,26 @@ export default function ExcelScheduleGrid() {
   }, [autoWhatsApp]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const loadNotifications = () => {
+      const raw = localStorage.getItem("scheduler-notifications");
+      if (!raw) {
+        setSchedulerNotifications([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        setSchedulerNotifications(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setSchedulerNotifications([]);
+      }
+    };
+    loadNotifications();
+    window.addEventListener("storage", loadNotifications);
+    return () => window.removeEventListener("storage", loadNotifications);
+  }, []);
+
+  useEffect(() => {
     const settings = loadStoredSettings();
     if (settings?.working_hours?.start && settings?.working_hours?.end) {
       setWorkingHours({
@@ -829,6 +872,40 @@ export default function ExcelScheduleGrid() {
     <div className="flex h-auto min-h-[80vh] flex-col bg-white border rounded-xl overflow-hidden shadow-sm lg:h-[90vh] lg:flex-row">
       {/* ================== SIDEBAR FILTROS ================== */}
       <aside className="w-full border-b bg-gray-50 p-2 lg:w-[260px] lg:border-b-0 lg:border-r">
+        {schedulerNotifications.length > 0 && (
+          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900">
+            <div className="font-semibold">Reagendar pendente</div>
+            <div className="mt-1 space-y-2">
+              {schedulerNotifications.slice(0, 3).map((n) => (
+                <div key={n.id} className="rounded-md border border-amber-200 bg-white p-2">
+                  <div className="font-medium">{n.patient_name} × {n.doctor_name}</div>
+                  <div className="text-[10px] text-amber-800">
+                    {n.date} {n.time} — {n.reason || "Falta justificada"}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => openEditById(n.appointment_id)}
+                    >
+                      Reagendar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      onClick={() => resolveSchedulerNotification(n.appointment_id)}
+                    >
+                      Resolver
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button className="h-8 flex-1 bg-purple-600 hover:bg-purple-700" onClick={() => openNew()}>
             <Plus className="w-4 h-4 mr-1" /> Novo

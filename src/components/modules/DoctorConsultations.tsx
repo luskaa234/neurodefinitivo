@@ -178,6 +178,30 @@ export function DoctorConsultations() {
 
       sendJustificationWhatsApp(data.appointment_id);
 
+      try {
+        const appointment = appointments.find((apt) => apt.id === data.appointment_id);
+        if (appointment && typeof window !== 'undefined') {
+          const payload = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            appointment_id: appointment.id,
+            patient_id: appointment.patient_id,
+            doctor_id: appointment.doctor_id,
+            patient_name: getPatientName(appointment.patient_id),
+            doctor_name: user?.name || 'Médico',
+            date: new Date(appointment.date).toLocaleDateString('pt-BR'),
+            time: appointment.time,
+            reason: data.reason,
+            created_at: new Date().toISOString(),
+          };
+          const raw = localStorage.getItem('scheduler-notifications');
+          const list = raw ? JSON.parse(raw) : [];
+          list.unshift(payload);
+          localStorage.setItem('scheduler-notifications', JSON.stringify(list));
+        }
+      } catch (error) {
+        console.error('Erro ao registrar notificação de reagendamento:', error);
+      }
+
       toast.success('✅ Falta justificada com sucesso!');
       reset();
       setIsJustificationDialogOpen(false);

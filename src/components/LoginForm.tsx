@@ -32,7 +32,7 @@ export function LoginForm() {
   const [connectionStatus, setConnectionStatus] = useState<'testing' | 'success' | 'error'>('testing');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [logoUrl, setLogoUrl] = useState('');
+  const [logoUrl, setLogoUrl] = useState('/icons/icon-512.png');
   const [brandName, setBrandName] = useState('Neuro Integrar');
   const { login, isLoading } = useAuth();
 
@@ -58,7 +58,7 @@ export function LoginForm() {
       const settingsRaw = localStorage.getItem('app-settings');
       if (settingsRaw) {
         const settings = JSON.parse(settingsRaw);
-        setLogoUrl(settings.logo_site_url || settings.logo_pwa_url || '');
+        setLogoUrl(settings.logo_site_url || settings.logo_pwa_url || '/icons/icon-512.png');
         setBrandName(settings.site_short_name || settings.site_name || settings.company_name || 'Neuro Integrar');
       }
     } catch (err) {

@@ -3,8 +3,8 @@ const isProd = process.env.VERCEL === '1';
 
 let withPWA = (config) => config;
 
-// ✅ PWA apenas em desenvolvimento (mantido)
-if (!isProd) {
+// ✅ PWA habilitado em produção para offline
+if (isProd) {
   const withPWAFactory = require('@ducanh2912/next-pwa').default;
 
   withPWA = withPWAFactory({

@@ -148,6 +148,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 ====================================================== */
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const CACHE_KEY = "neuro-app-cache-v1";
   const [users, setUsers] = useState<User[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [recurrences, setRecurrences] = useState<AppointmentRecurrence[]>([]);
@@ -240,9 +241,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // garante sempre array
       setServices((prev) => (Array.isArray(prev) ? prev : []));
+
+      if (typeof window !== "undefined") {
+        const cachePayload = {
+          users: usersRes.data ?? [],
+          appointments: aptRes.data ?? [],
+          financialRecords: finRes.data ?? [],
+          medicalRecords: medRes.data ?? [],
+          recurrences: recRes.data ?? [],
+          services: [],
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cachePayload));
+      }
     } catch (err: any) {
       console.error("loadAll error:", err?.message || err);
-      setError(err?.message || "Erro ao carregar dados");
+      if (typeof window !== "undefined") {
+        try {
+          const cachedRaw = localStorage.getItem(CACHE_KEY);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            setUsers(cached.users ?? []);
+            setAppointments(
+              (cached.appointments ?? []).map(normalizeAppointment)
+            );
+            setFinancialRecords(cached.financialRecords ?? []);
+            setMedicalRecords(cached.medicalRecords ?? []);
+            setRecurrences(cached.recurrences ?? []);
+            setServices(Array.isArray(cached.services) ? cached.services : []);
+            setError("Modo offline: dados carregados do cache");
+          } else {
+            setError(err?.message || "Erro ao carregar dados");
+          }
+        } catch {
+          setError(err?.message || "Erro ao carregar dados");
+        }
+      } else {
+        setError(err?.message || "Erro ao carregar dados");
+      }
     } finally {
       setLoading(false);
     }

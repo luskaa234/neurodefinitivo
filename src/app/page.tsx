@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoginForm } from "@/components/LoginForm";
 import { Sidebar } from "@/components/Sidebar";
@@ -27,6 +27,27 @@ import { Toaster } from "@/components/ui/sonner";
 export default function Home() {
   const { user, isLoading } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
+
+  const setSection = (section: string) => {
+    setActiveSection(section);
+    if (typeof window !== "undefined") {
+      const nextHash = `#${section}`;
+      if (window.location.hash !== nextHash) {
+        window.history.replaceState(null, "", nextHash);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const applyFromHash = () => {
+      const next = window.location.hash.replace("#", "").trim();
+      if (next) setActiveSection(next);
+    };
+    applyFromHash();
+    window.addEventListener("hashchange", applyFromHash);
+    return () => window.removeEventListener("hashchange", applyFromHash);
+  }, []);
 
   if (isLoading) {
     return (
@@ -120,13 +141,13 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100">
         <Sidebar
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={setSection}
         />
         <main className="flex-1 overflow-auto">
-          <div className="p-6">{renderContent()}</div>
+          <div className="p-3 sm:p-4 md:p-6 lg:p-8">{renderContent()}</div>
         </main>
       </div>
       <Toaster position="top-right" richColors />

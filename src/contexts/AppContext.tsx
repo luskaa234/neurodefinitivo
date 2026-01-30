@@ -519,6 +519,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(clearedKey, "1");
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+    const cleanedKey = "justifications-cleanup-applied";
+    if (localStorage.getItem(cleanedKey) === "1") return;
+    const targets = appointments.filter(
+      (apt) =>
+        typeof apt.notes === "string" &&
+        apt.notes.toLowerCase().includes("falta justificada")
+    );
+    if (!targets.length) {
+      localStorage.setItem(cleanedKey, "1");
+      return;
+    }
+    const run = async () => {
+      await Promise.all(
+        targets.map((apt) =>
+          supabase
+            .from("appointments")
+            .update({ status: "pendente", notes: null })
+            .eq("id", apt.id)
+        )
+      );
+      localStorage.setItem(cleanedKey, "1");
+      await loadAll();
+    };
+    run();
+  }, [appointments, loading, loadAll]);
+
   /* ======================================================
      REALTIME
 ====================================================== */

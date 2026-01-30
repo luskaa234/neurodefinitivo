@@ -64,21 +64,55 @@ export function Dashboard() {
     if (user?.role !== 'agendamento' && user?.role !== 'admin') return;
     const loadSchedulerNotifications = () => {
       const raw = localStorage.getItem('scheduler-notifications');
-      if (!raw) {
-        setSchedulerNotifications([]);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(raw);
-        setSchedulerNotifications(Array.isArray(parsed) ? parsed : []);
-      } catch {
-        setSchedulerNotifications([]);
-      }
+      const rawJust = localStorage.getItem('doctor-justifications');
+      const base = raw ? JSON.parse(raw) : [];
+      const justifications = rawJust ? JSON.parse(rawJust) : [];
+      const existingIds = new Set((base || []).map((n: any) => n.appointment_id));
+      const fromJustifications = Array.isArray(justifications)
+        ? justifications
+            .filter((j: any) => !existingIds.has(j.appointment_id))
+            .map((j: any) => {
+              const appointment = appointments.find((apt) => apt.id === j.appointment_id);
+              return {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                appointment_id: j.appointment_id,
+                patient_id: appointment?.patient_id,
+                doctor_id: appointment?.doctor_id,
+                patient_name: appointment ? getPatientName(appointment.patient_id) : 'Paciente',
+                doctor_name: appointment ? getDoctorName(appointment.doctor_id) : 'Médico',
+                date: appointment
+                  ? new Date(appointment.date).toLocaleDateString('pt-BR')
+                  : '',
+                time: appointment?.time || '',
+                reason: j.reason,
+                created_at: j.created_at || new Date().toISOString(),
+              };
+            })
+        : [];
+
+      const merged = [...fromJustifications, ...(base || [])];
+      localStorage.setItem('scheduler-notifications', JSON.stringify(merged));
+      setSchedulerNotifications(merged);
+      return;
     };
     loadSchedulerNotifications();
     window.addEventListener('storage', loadSchedulerNotifications);
     return () => window.removeEventListener('storage', loadSchedulerNotifications);
-  }, [user?.role]);
+  }, [user?.role, appointments]);
+
+  const deleteDoctorNotification = (notificationId: string) => {
+    const raw = localStorage.getItem('whatsapp-notifications');
+    if (!raw) return;
+    try {
+      const list = JSON.parse(raw);
+      const next = Array.isArray(list) ? list.filter((n: any) => n.id !== notificationId) : [];
+      localStorage.setItem('whatsapp-notifications', JSON.stringify(next));
+      setNotifications(next.filter((n: any) => n.doctor_id === user?.id));
+      toast.success('Notificação removida.');
+    } catch {
+      // ignore
+    }
+  };
 
   const today = new Date();
   const baseAppointments = Array.isArray(appointments)
@@ -475,6 +509,15 @@ export function Dashboard() {
                       </span>
                     </div>
                     <p className="mt-2 text-gray-700">{note.message}</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteDoctorNotification(note.id)}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

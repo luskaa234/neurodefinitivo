@@ -103,6 +103,20 @@ export function DoctorConsultations() {
     return () => window.removeEventListener('storage', loadNotifications);
   }, [user?.id]);
 
+  const deleteNotification = (notificationId: string) => {
+    const raw = localStorage.getItem('whatsapp-notifications');
+    if (!raw) return;
+    try {
+      const list = JSON.parse(raw) as WhatsAppNotification[];
+      const next = list.filter((n) => n.id !== notificationId);
+      localStorage.setItem('whatsapp-notifications', JSON.stringify(next));
+      setNotifications(next.filter((n) => n.doctor_id === user?.id));
+      toast.success('Notificação removida.');
+    } catch {
+      // ignore
+    }
+  };
+
   const saveJustifications = (newJustifications: Justification[]) => {
     setJustifications(newJustifications);
     localStorage.setItem('doctor-justifications', JSON.stringify(newJustifications));
@@ -364,6 +378,15 @@ export function DoctorConsultations() {
                     </span>
                   </div>
                   <p className="mt-2 text-gray-700">{note.message}</p>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deleteNotification(note.id)}
+                    >
+                      Excluir
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

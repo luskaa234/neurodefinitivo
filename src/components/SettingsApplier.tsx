@@ -1,12 +1,37 @@
 "use client";
 
 import { useEffect } from "react";
-import { applySettingsToDocument, loadStoredSettings } from "@/lib/appSettings";
+import {
+  applySettingsToDocument,
+  loadStoredSettings,
+  saveSettings,
+  DEFAULT_SETTINGS,
+} from "@/lib/appSettings";
 
 export default function SettingsApplier() {
   useEffect(() => {
     const apply = () => {
       const settings = loadStoredSettings();
+      const paletteKey = "palette-fixed-2026-01";
+      const needsLogo =
+        settings.logo_site_url !== DEFAULT_SETTINGS.logo_site_url ||
+        settings.logo_pwa_url !== DEFAULT_SETTINGS.logo_pwa_url;
+      if (typeof window !== "undefined" && (localStorage.getItem(paletteKey) !== "1" || needsLogo)) {
+        const next = {
+          ...settings,
+          brand_primary: DEFAULT_SETTINGS.brand_primary,
+          brand_secondary: DEFAULT_SETTINGS.brand_secondary,
+          brand_accent: DEFAULT_SETTINGS.brand_accent,
+          brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
+          brand_background: DEFAULT_SETTINGS.brand_background,
+          logo_site_url: DEFAULT_SETTINGS.logo_site_url,
+          logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
+        };
+        saveSettings(next);
+        localStorage.setItem(paletteKey, "1");
+        applySettingsToDocument(next);
+        return;
+      }
       applySettingsToDocument(settings);
     };
     apply();

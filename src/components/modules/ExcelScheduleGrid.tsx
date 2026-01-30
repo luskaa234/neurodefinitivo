@@ -1187,9 +1187,9 @@ export default function ExcelScheduleGrid() {
           </div>
         </div>
 
-        <div className="h-full overflow-hidden lg:max-h-[78vh] lg:overflow-y-auto lg:pr-2">
+        <div className="h-full overflow-x-auto lg:overflow-x-visible lg:max-h-[78vh] lg:overflow-y-auto lg:pr-2">
           <div className="w-full">
-            <table className="w-full table-fixed border-collapse text-[11px]">
+            <table className="min-w-[720px] w-full table-fixed border-collapse text-[10px] sm:text-[11px]">
               <thead>
                 <tr className="bg-purple-200 text-gray-900">
                   <th className="sticky left-0 z-10 w-14 border border-purple-300 bg-purple-200 px-1 py-1 text-left">

@@ -121,10 +121,10 @@ export function FinanceiroDashboard() {
   const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard Financeiro</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-2xl font-bold sm:text-3xl">Dashboard Financeiro</h1>
+        <p className="mt-2 text-sm text-gray-600 sm:text-base">
           Controle completo das finanças e faturamento
         </p>
       </div>

@@ -348,7 +348,8 @@ const onSubmitEdit = async (data: ServiceFormData) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <div className="w-full overflow-x-auto">
+            <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
@@ -411,7 +412,8 @@ const onSubmitEdit = async (data: ServiceFormData) => {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

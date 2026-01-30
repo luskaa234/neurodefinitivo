@@ -222,16 +222,16 @@ export function SystemSettings() {
   const timeSlotPreview = generateTimeSlotPreview();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       <div>
-        <h1 className="text-3xl font-bold">⚙️ Configurações do Sistema</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-2xl font-bold sm:text-3xl">⚙️ Configurações do Sistema</h1>
+        <p className="mt-2 text-sm text-gray-600 sm:text-base">
           Configure as informações da sua clínica - <strong>TODAS AS MUDANÇAS SÃO APLICADAS IMEDIATAMENTE</strong>
         </p>
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex w-full flex-wrap gap-2 sm:gap-0">
           <TabsTrigger value="company">🏢 Empresa</TabsTrigger>
           <TabsTrigger value="schedule">⏰ Horários</TabsTrigger>
           <TabsTrigger value="whatsapp">📱 WhatsApp</TabsTrigger>
@@ -251,7 +251,7 @@ export function SystemSettings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="company_name">Nome da Clínica</Label>
                     <Input
@@ -294,7 +294,7 @@ export function SystemSettings() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="company_phone">Telefone Principal</Label>
                     <Input
@@ -335,7 +335,7 @@ export function SystemSettings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="working_hours_start">🌅 Horário de Início</Label>
                     <Input
@@ -703,7 +703,7 @@ export function SystemSettings() {
           <CheckCircle className="h-5 w-5 text-green-600" />
           <h4 className="font-bold text-green-800">🎯 Status do Sistema:</h4>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
+        <div className="mt-2 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
             <p className="text-green-700">
               <strong>📱 WhatsApp:</strong> {settings.whatsapp_number || '98974003414'}

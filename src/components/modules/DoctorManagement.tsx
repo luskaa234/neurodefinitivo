@@ -354,24 +354,24 @@ export function DoctorManagement() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <Stethoscope className="h-7 w-7 text-primary" />
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gestão de Médicos</h1>
-            <p className="text-sm text-gray-500">Cadastre, acompanhe e organize sua equipe clínica</p>
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Gestão de Médicos</h1>
+            <p className="text-xs text-gray-500 sm:text-sm">Cadastre, acompanhe e organize sua equipe clínica</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+          <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
             Total: {totalDoctors}
           </div>
-          <div className="rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+          <div className="rounded-full border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700 sm:text-xs">
             Ativos: {totalActive}
           </div>
-          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-[11px] font-semibold text-yellow-700 sm:text-xs">
             Pendentes: {totalPending}
           </div>
         </div>
@@ -484,7 +484,8 @@ export function DoctorManagement() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Table>
+                <div className="w-full overflow-x-auto">
+                  <Table className="min-w-[520px]">
                   <TableBody>
                     <TableRow>
                       <TableCell className="font-medium">📧 Email</TableCell>
@@ -537,7 +538,8 @@ export function DoctorManagement() {
                       </TableCell>
                     </TableRow>
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
 
                 {/* Ações */}
                 <div className="flex flex-wrap justify-end gap-2">

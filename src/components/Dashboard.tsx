@@ -484,22 +484,22 @@ export function Dashboard() {
   const metrics = getMetricsForRole();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{getWelcomeMessage()}</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-2xl font-bold sm:text-3xl">{getWelcomeMessage()}</h1>
+          <p className="mt-2 text-sm text-gray-600 sm:text-base">
             Aqui está um resumo das atividades do sistema
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+          <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
             Hoje: {today.toLocaleDateString('pt-BR')}
           </div>
-          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-[11px] font-semibold text-yellow-700 sm:text-xs">
             Pendentes: {pendingAppointments.length}
           </div>
-          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 sm:text-xs">
             Confirmadas: {confirmedAppointments}
           </div>
         </div>

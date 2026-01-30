@@ -341,12 +341,12 @@ export function MedicalRecords() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row justify-between gap-4 items-center">
         <div>
-          <h1 className="text-3xl font-bold">📑 Prontuários Médicos</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl font-bold sm:text-3xl">📑 Prontuários Médicos</h1>
+          <p className="mt-1 text-sm text-gray-600">
             Gerencie e pesquise os prontuários cadastrados
           </p>
         </div>
@@ -364,7 +364,7 @@ export function MedicalRecords() {
           </div>
 
           <Select onValueChange={(val) => setFilterPatient(val)}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Filtrar por Paciente" />
             </SelectTrigger>
             <SelectContent>
@@ -377,7 +377,7 @@ export function MedicalRecords() {
           </Select>
 
           <Select onValueChange={(val) => setFilterDoctor(val)}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Filtrar por Médico" />
             </SelectTrigger>
             <SelectContent>
@@ -546,7 +546,8 @@ export function MedicalRecords() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+        <div className="w-full overflow-x-auto">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Data</TableHead>
@@ -610,6 +611,7 @@ export function MedicalRecords() {
               )}
             </TableBody>
           </Table>
+        </div>
         </CardContent>
       </Card>
 

@@ -534,16 +534,16 @@ const success = await addFinancialRecord(payload);
      UI
      ========================= */
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       {/* HEADER + AÇÕES */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">💰 Financeiro</h1>
-          <p className="text-gray-600">
+          <h1 className="text-2xl font-bold sm:text-3xl">💰 Financeiro</h1>
+          <p className="text-sm text-gray-600 sm:text-base">
             Visão geral, filtros avançados e gestão de transações.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => {
             setSearch(""); setFilterType("all"); setFilterStatus("all"); setFilterPayment("all"); setDateFrom(""); setDateTo(""); setPage(1);
           }}>
@@ -1077,7 +1077,8 @@ const success = await addFinancialRecord(payload);
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-auto">
-            <Table>
+          <div className="w-full overflow-x-auto">
+            <Table className="min-w-[980px]">
               <TableHeader className="sticky top-0 bg-white z-10">
                 <TableRow>
                   <TableHead className="min-w-[110px]">Data</TableHead>
@@ -1175,6 +1176,7 @@ const success = await addFinancialRecord(payload);
               </TableBody>
             </Table>
           </div>
+          </div>
 
           {/* paginação + totais do recorte atual */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4">
@@ -1245,7 +1247,8 @@ const success = await addFinancialRecord(payload);
               <CardDescription>Marque como pago quando receber</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <div className="w-full overflow-x-auto">
+                <Table className="min-w-[720px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
@@ -1336,7 +1339,8 @@ const success = await addFinancialRecord(payload);
                     </TableRow>
                   )}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

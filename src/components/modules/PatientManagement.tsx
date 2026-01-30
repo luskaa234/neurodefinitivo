@@ -389,15 +389,15 @@ export function PatientManagement() {
     );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-4">
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">👥 Gestão de Pacientes</h1>
-          <p className="text-gray-600">Gerencie seus pacientes de forma prática</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">👥 Gestão de Pacientes</h1>
+          <p className="text-sm text-gray-600">Gerencie seus pacientes de forma prática</p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* Exportar */}
           <Button variant="outline" onClick={() => exportCSV(filteredPatients)}>
             <Download className="mr-2 h-4 w-4" />
@@ -421,7 +421,7 @@ export function PatientManagement() {
               <DialogHeader>
                 <DialogTitle>Novo Paciente</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input placeholder="Nome" {...register("name")} />
                 <Input placeholder="Email" {...register("email")} />
                 <Input placeholder="CPF" {...register("cpf")} />
@@ -471,7 +471,8 @@ export function PatientManagement() {
               <CardTitle>Pacientes</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
+            <div className="w-full overflow-x-auto">
+              <Table className="min-w-[720px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
@@ -518,6 +519,7 @@ export function PatientManagement() {
                   )}
                 </TableBody>
               </Table>
+            </div>
             </CardContent>
           </Card>
         </TabsContent>

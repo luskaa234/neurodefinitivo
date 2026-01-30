@@ -400,26 +400,26 @@ export function UserManagement() {
   const totalDoctors = users.filter((u) => u.role === "medico").length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 px-2 sm:px-4">
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Usuários</h1>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Usuários</h1>
           <p className="text-sm text-gray-500">
             Gerencie acessos, permissões e status do time.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+          <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 sm:text-xs">
             Total: {totalUsers}
           </div>
-          <div className="rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+          <div className="rounded-full border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700 sm:text-xs">
             Ativos: {totalActive}
           </div>
-          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+          <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-[11px] font-semibold text-yellow-700 sm:text-xs">
             Inativos: {totalInactive}
           </div>
-          <div className="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+          <div className="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-[11px] font-semibold text-purple-700 sm:text-xs">
             Médicos: {totalDoctors}
           </div>
         </div>
@@ -484,7 +484,8 @@ export function UserManagement() {
           <CardDescription>Usuários cadastrados no sistema</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+        <div className="w-full overflow-x-auto">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
@@ -557,6 +558,7 @@ export function UserManagement() {
               )}
             </TableBody>
           </Table>
+        </div>
         </CardContent>
       </Card>
 

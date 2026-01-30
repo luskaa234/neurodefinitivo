@@ -16,7 +16,13 @@ export default function SettingsApplier() {
       const needsLogo =
         settings.logo_site_url !== DEFAULT_SETTINGS.logo_site_url ||
         settings.logo_pwa_url !== DEFAULT_SETTINGS.logo_pwa_url;
-      if (typeof window !== "undefined" && (localStorage.getItem(paletteKey) !== "1" || needsLogo)) {
+      const needsName =
+        settings.site_name !== DEFAULT_SETTINGS.site_name ||
+        settings.site_short_name !== DEFAULT_SETTINGS.site_short_name;
+      if (
+        typeof window !== "undefined" &&
+        (localStorage.getItem(paletteKey) !== "1" || needsLogo || needsName)
+      ) {
         const next = {
           ...settings,
           brand_primary: DEFAULT_SETTINGS.brand_primary,
@@ -26,6 +32,8 @@ export default function SettingsApplier() {
           brand_background: DEFAULT_SETTINGS.brand_background,
           logo_site_url: DEFAULT_SETTINGS.logo_site_url,
           logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
+          site_name: DEFAULT_SETTINGS.site_name,
+          site_short_name: DEFAULT_SETTINGS.site_short_name,
         };
         saveSettings(next);
         localStorage.setItem(paletteKey, "1");

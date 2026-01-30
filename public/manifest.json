@@ -1,6 +1,6 @@
 {
   "name": "Neuro Integrar",
-  "short_name": "NeuroIntegrar",
+  "short_name": "Neuro Integrar",
   "description": "Sistema completo para gestão de clínicas neurológicas com IA e integração Supabase.",
   "start_url": "/",
   "scope": "/",

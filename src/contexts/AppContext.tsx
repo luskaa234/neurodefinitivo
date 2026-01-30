@@ -175,6 +175,109 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return m ? `${m[1]}:${m[2]}` : "";
   };
 
+  const normalizePhone = (value?: string | null) => {
+    if (!value) return "";
+    const digits = value.replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.startsWith("55")) return digits;
+    return `55${digits}`;
+  };
+
+  const getUserById = (id?: string | null) =>
+    id ? users.find((u) => u.id === id) : undefined;
+
+  const getUsersByIds = (ids: string[] = []) =>
+    ids.map((id) => getUserById(id)).filter(Boolean) as User[];
+
+  const toUiStatus = (s: AppointmentStatus) =>
+    s === "pendente" ? "agendado" : s;
+
+  const formatDateTime = (date?: string, time?: string) => {
+    if (!date || !time) return "";
+    const [y, m, d] = date.split("-");
+    const t = normalizeTimeToHHMM(time);
+    return `${d}/${m}/${y} ${t}`;
+  };
+
+  const openWhatsApp = (to: string, message: string) => {
+    const url = `https://api.whatsapp.com/send?phone=${to}&text=${encodeURIComponent(
+      message
+    )}`;
+    window.open(url, "_blank");
+  };
+
+  const notifyAppointmentWhatsApp = (params: {
+    type: "create" | "update" | "cancel" | "reschedule";
+    appointment: Appointment;
+    previous?: Appointment | null;
+    patientIds: string[];
+    doctorIds: string[];
+  }) => {
+    if (typeof window === "undefined") return;
+    if (!navigator.onLine) {
+      toast.error("Sem internet para enviar WhatsApp.");
+      return;
+    }
+
+    const { type, appointment, previous, patientIds, doctorIds } = params;
+    const patientsList = getUsersByIds(patientIds);
+    const doctorsList = getUsersByIds(doctorIds);
+
+    const patientNames = patientsList.map((u) => u.name).join(", ");
+    const doctorNames = doctorsList.map((u) => u.name).join(", ");
+
+    const dateTime = formatDateTime(appointment.date, appointment.time);
+    const prevDateTime = previous
+      ? formatDateTime(previous.date, previous.time)
+      : "";
+
+    const statusLabel = toUiStatus(appointment.status);
+
+    const patientMessage =
+      type === "create"
+        ? `Olá ${patientNames}, seu agendamento foi criado com ${doctorNames} para ${dateTime}. Status: ${statusLabel}.`
+        : type === "cancel"
+          ? `Olá ${patientNames}, seu agendamento com ${doctorNames} em ${prevDateTime || dateTime} foi cancelado.`
+          : type === "reschedule"
+            ? `Olá ${patientNames}, seu agendamento com ${doctorNames} foi reagendado de ${prevDateTime} para ${dateTime}.`
+            : `Olá ${patientNames}, seu agendamento com ${doctorNames} foi atualizado. Data/Hora: ${dateTime}. Status: ${statusLabel}.`;
+
+    const doctorMessage =
+      type === "create"
+        ? `Olá ${doctorNames}, novo agendamento com ${patientNames} para ${dateTime}. Status: ${statusLabel}.`
+        : type === "cancel"
+          ? `Olá ${doctorNames}, agendamento com ${patientNames} em ${prevDateTime || dateTime} foi cancelado.`
+          : type === "reschedule"
+            ? `Olá ${doctorNames}, agendamento com ${patientNames} foi reagendado de ${prevDateTime} para ${dateTime}.`
+            : `Olá ${doctorNames}, agendamento com ${patientNames} foi atualizado. Data/Hora: ${dateTime}. Status: ${statusLabel}.`;
+
+    const missing: string[] = [];
+
+    patientsList.forEach((p) => {
+      const phone = normalizePhone(p.phone);
+      if (!phone) {
+        missing.push(`Paciente: ${p.name}`);
+        return;
+      }
+      openWhatsApp(phone, patientMessage);
+    });
+
+    doctorsList.forEach((d) => {
+      const phone = normalizePhone(d.phone);
+      if (!phone) {
+        missing.push(`Médico: ${d.name}`);
+        return;
+      }
+      openWhatsApp(phone, doctorMessage);
+    });
+
+    if (missing.length) {
+      toast.error(`WhatsApp não enviado (sem telefone): ${missing.join(", ")}`);
+    } else {
+      toast.success("WhatsApp enviado para paciente(s) e médico(s).");
+    }
+  };
+
   /* ======================================================
      NORMALIZAÇÃO RELACIONAL
 ====================================================== */
@@ -442,6 +545,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await syncAppointmentDoctors(apt.id, doctorIds);
 
       await loadAll();
+      notifyAppointmentWhatsApp({
+        type: "create",
+        appointment: apt as Appointment,
+        patientIds,
+        doctorIds,
+      });
       return true;
     } catch (err: any) {
       console.error("addAppointment:", err?.message || err);
@@ -455,6 +564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     data
   ) => {
     try {
+      const previous = appointments.find((a) => a.id === id) || null;
       const patientIds = data.patient_ids
         ? uniq(data.patient_ids)
         : undefined;
@@ -485,6 +595,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (doctorIds) await syncAppointmentDoctors(id, doctorIds);
 
       await loadAll();
+      const effectivePatientIds =
+        patientIds ?? previous?.patient_ids ?? [previous?.patient_id || ""];
+      const effectiveDoctorIds =
+        doctorIds ?? previous?.doctor_ids ?? [previous?.doctor_id || ""];
+      const nextStatus =
+        (patch.status as AppointmentStatus) || previous?.status || "pendente";
+      const nextDate = patch.date || previous?.date || "";
+      const nextTime = patch.time || previous?.time || "";
+
+      const nextAppointment: Appointment = {
+        ...(previous || ({} as Appointment)),
+        ...(patch as Appointment),
+        status: nextStatus,
+        date: nextDate,
+        time: nextTime,
+      };
+
+      let type: "update" | "cancel" | "reschedule" = "update";
+      if (nextStatus === "cancelado") {
+        type = "cancel";
+      } else if (
+        previous &&
+        (previous.date !== nextDate ||
+          normalizeTimeToHHMM(previous.time) !==
+            normalizeTimeToHHMM(nextTime))
+      ) {
+        type = "reschedule";
+      }
+
+      notifyAppointmentWhatsApp({
+        type,
+        appointment: nextAppointment,
+        previous,
+        patientIds: effectivePatientIds.filter(Boolean),
+        doctorIds: effectiveDoctorIds.filter(Boolean),
+      });
       return true;
     } catch (err: any) {
       console.error("updateAppointment:", err?.message || err);
@@ -495,6 +641,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAppointment = async (id: string) => {
     try {
+      const previous = appointments.find((a) => a.id === id) || null;
       // apaga relações primeiro para não deixar lixo
       await supabase
         .from("appointment_patients")
@@ -509,6 +656,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       await loadAll();
+      if (previous) {
+        notifyAppointmentWhatsApp({
+          type: "cancel",
+          appointment: previous,
+          previous,
+          patientIds: previous.patient_ids ?? [previous.patient_id],
+          doctorIds: previous.doctor_ids ?? [previous.doctor_id],
+        });
+      }
       return true;
     } catch (err: any) {
       console.error("deleteAppointment:", err?.message || err);

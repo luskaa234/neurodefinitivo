@@ -147,6 +147,20 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
 }
 
+const normalizePhone = (value?: string | null) => {
+  if (!value) return "";
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+};
+
+const formatDateTime = (date?: string, time?: string) => {
+  if (!date || !time) return "";
+  const [y, m, d] = date.split("-");
+  const t = normalizeTime(time);
+  return `${d}/${m}/${y} ${t}`;
+};
+
 function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -236,6 +250,13 @@ export default function ExcelScheduleGrid() {
   const duracaoServico = (type: string) => services.find((s) => s.name === type)?.duration ?? 60;
 
   const formDuration = useMemo(() => duracaoServico(form.type), [form.type, services]);
+
+  const isReschedule = useMemo(() => {
+    if (!editing || !selected) return false;
+    const prevTime = normalizeTime(selected.time);
+    const nextTime = normalizeTime(form.time);
+    return selected.date !== form.date || prevTime !== nextTime;
+  }, [editing, selected, form.date, form.time]);
 
   /* ======================================================
      CONFLITO REAL (multi médicos)
@@ -420,6 +441,8 @@ export default function ExcelScheduleGrid() {
       return;
     }
 
+    const nextStatus = isReschedule ? "agendado" : form.status;
+
     // PRINCIPAL = primeiro selecionado (obrigatório no banco)
     const payload = {
       patient_id: form.patient_ids[0],
@@ -431,7 +454,7 @@ export default function ExcelScheduleGrid() {
       type: form.type.trim(),
       price: Number(form.price) || 0,
       notes: form.notes,
-      status: toDbStatus(form.status),
+      status: toDbStatus(nextStatus),
       is_fixed: form.is_fixed,
     };
 
@@ -445,6 +468,67 @@ export default function ExcelScheduleGrid() {
       closePanel();
     } else {
       toast.error("Erro ao salvar");
+    }
+  };
+
+  const buildWhatsAppMessage = (target: "patient" | "doctor") => {
+    const patientNames = form.patient_ids.map(getPaciente).join(", ");
+    const doctorNames = form.doctor_ids.map(getMedico).join(", ");
+    const dateTime = formatDateTime(form.date, form.time);
+    const statusLabel = isReschedule
+      ? "reagendado"
+      : form.status === "agendado"
+        ? "pendente"
+        : form.status;
+
+    if (target === "patient") {
+      return `Olá ${patientNames}, seu agendamento com ${doctorNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
+    }
+    return `Olá ${doctorNames}, agendamento com ${patientNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
+  };
+
+  const sendWhatsApp = (target: "patient" | "doctor" | "all") => {
+    if (!form.date || !form.time || !form.patient_ids.length || !form.doctor_ids.length) {
+      toast.error("Preencha pacientes, médicos, data e hora antes de enviar WhatsApp.");
+      return;
+    }
+
+    const missing: string[] = [];
+    const messagePatient = buildWhatsAppMessage("patient");
+    const messageDoctor = buildWhatsAppMessage("doctor");
+
+    if (target === "patient" || target === "all") {
+      form.patient_ids.forEach((id) => {
+        const phone = normalizePhone(patients.find((p) => p.id === id)?.phone);
+        if (!phone) {
+          missing.push(`Paciente: ${getPaciente(id)}`);
+          return;
+        }
+        window.open(
+          `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messagePatient)}`,
+          "_blank"
+        );
+      });
+    }
+
+    if (target === "doctor" || target === "all") {
+      form.doctor_ids.forEach((id) => {
+        const phone = normalizePhone(doctors.find((d) => d.id === id)?.phone);
+        if (!phone) {
+          missing.push(`Médico: ${getMedico(id)}`);
+          return;
+        }
+        window.open(
+          `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messageDoctor)}`,
+          "_blank"
+        );
+      });
+    }
+
+    if (missing.length) {
+      toast.error(`WhatsApp não enviado (sem telefone): ${missing.join(", ")}`);
+    } else {
+      toast.success("WhatsApp aberto para envio.");
     }
   };
 
@@ -1238,6 +1322,45 @@ export default function ExcelScheduleGrid() {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant={form.status === "agendado" ? "default" : "outline"}
+                  className="h-9"
+                  onClick={() => setForm((s) => ({ ...s, status: "agendado" }))}
+                >
+                  Pendente
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.status === "confirmado" ? "default" : "outline"}
+                  className="h-9"
+                  onClick={() => setForm((s) => ({ ...s, status: "confirmado" }))}
+                >
+                  Confirmado
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.status === "cancelado" ? "destructive" : "outline"}
+                  className="h-9"
+                  onClick={() => setForm((s) => ({ ...s, status: "cancelado" }))}
+                >
+                  Cancelado
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.status === "realizado" ? "default" : "outline"}
+                  className="h-9"
+                  onClick={() => setForm((s) => ({ ...s, status: "realizado" }))}
+                >
+                  Realizado
+                </Button>
+              </div>
+              {isReschedule && (
+                <p className="text-[10px] text-amber-600">
+                  Reagendado: status será definido como pendente automaticamente.
+                </p>
+              )}
             </div>
 
             <label className="flex items-center gap-2 text-[11px] text-gray-700">
@@ -1283,6 +1406,33 @@ export default function ExcelScheduleGrid() {
               </Button>
               <Button variant="outline" className="flex-1 h-10" onClick={closePanel}>
                 Cancelar
+              </Button>
+            </div>
+
+            {/* WHATSAPP */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10"
+                onClick={() => sendWhatsApp("patient")}
+              >
+                WhatsApp Paciente
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10"
+                onClick={() => sendWhatsApp("doctor")}
+              >
+                WhatsApp Médico
+              </Button>
+              <Button
+                type="button"
+                className="h-10 col-span-2"
+                onClick={() => sendWhatsApp("all")}
+              >
+                WhatsApp Todos
               </Button>
             </div>
 
@@ -1579,6 +1729,45 @@ export default function ExcelScheduleGrid() {
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <Button
+                    type="button"
+                    variant={form.status === "agendado" ? "default" : "outline"}
+                    className="h-9"
+                    onClick={() => setForm((s) => ({ ...s, status: "agendado" }))}
+                  >
+                    Pendente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={form.status === "confirmado" ? "default" : "outline"}
+                    className="h-9"
+                    onClick={() => setForm((s) => ({ ...s, status: "confirmado" }))}
+                  >
+                    Confirmado
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={form.status === "cancelado" ? "destructive" : "outline"}
+                    className="h-9"
+                    onClick={() => setForm((s) => ({ ...s, status: "cancelado" }))}
+                  >
+                    Cancelado
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={form.status === "realizado" ? "default" : "outline"}
+                    className="h-9"
+                    onClick={() => setForm((s) => ({ ...s, status: "realizado" }))}
+                  >
+                    Realizado
+                  </Button>
+                </div>
+                {isReschedule && (
+                  <p className="text-[10px] text-amber-600">
+                    Reagendado: status será definido como pendente automaticamente.
+                  </p>
+                )}
               </div>
 
               <label className="flex items-center gap-2 text-[11px] text-gray-700">
@@ -1621,6 +1810,32 @@ export default function ExcelScheduleGrid() {
                 </Button>
                 <Button variant="outline" className="flex-1 h-10" onClick={closePanel}>
                   Cancelar
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10"
+                  onClick={() => sendWhatsApp("patient")}
+                >
+                  WhatsApp Paciente
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10"
+                  onClick={() => sendWhatsApp("doctor")}
+                >
+                  WhatsApp Médico
+                </Button>
+                <Button
+                  type="button"
+                  className="h-10 col-span-2"
+                  onClick={() => sendWhatsApp("all")}
+                >
+                  WhatsApp Todos
                 </Button>
               </div>
 

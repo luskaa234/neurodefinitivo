@@ -646,12 +646,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (error || !apt) throw error;
 
-      // cria registro financeiro pendente
+      // cria registro financeiro pendente (inclui paciente/responsável)
+      const patientName = getUserById(base.patient_id)?.name || "Paciente";
+      const { data: patientRow } = await supabase
+        .from("patients")
+        .select("responsavel")
+        .eq("user_id", base.patient_id)
+        .maybeSingle();
+      const responsavel = patientRow?.responsavel ? ` | Responsável: ${patientRow.responsavel}` : "";
       await supabase.from("financial_records").insert([
         {
           type: "receita",
           amount: Number(base.price) || 0,
-          description: `Consulta: ${base.type}`,
+          description: `Consulta: ${base.type} | Paciente: ${patientName}${responsavel}`,
           category: "Consulta",
           date: base.date,
           appointment_id: apt.id,

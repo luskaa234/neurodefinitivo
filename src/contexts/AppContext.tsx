@@ -139,6 +139,15 @@ interface AppContextType {
   ) => Promise<boolean>;
 
   deleteAppointment: (id: string) => Promise<boolean>;
+
+  addFinancialRecord: (
+    data: Omit<FinancialRecord, "id" | "created_at">
+  ) => Promise<boolean>;
+  updateFinancialRecord: (
+    id: string,
+    data: Partial<FinancialRecord>
+  ) => Promise<boolean>;
+  deleteFinancialRecord: (id: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -842,6 +851,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const addFinancialRecord: AppContextType["addFinancialRecord"] = async (
+    data
+  ) => {
+    try {
+      const payload = {
+        type: data.type,
+        amount: Number(data.amount) || 0,
+        description: data.description,
+        category: data.category,
+        date: data.date,
+        status: data.status,
+        appointment_id: data.appointment_id ?? null,
+      };
+
+      const { error } = await supabase
+        .from("financial_records")
+        .insert([payload]);
+      if (error) throw error;
+
+      await loadAll();
+      return true;
+    } catch (err: any) {
+      console.error("addFinancialRecord:", err?.message || err);
+      toast.error(err?.message || "Erro ao adicionar registro financeiro");
+      return false;
+    }
+  };
+
+  const updateFinancialRecord: AppContextType["updateFinancialRecord"] = async (
+    id,
+    data
+  ) => {
+    try {
+      const patch: Partial<FinancialRecord> = { ...data };
+      if (patch.amount !== undefined) {
+        patch.amount = Number(patch.amount) || 0;
+      }
+      const { error } = await supabase
+        .from("financial_records")
+        .update(patch)
+        .eq("id", id);
+      if (error) throw error;
+
+      await loadAll();
+      return true;
+    } catch (err: any) {
+      console.error("updateFinancialRecord:", err?.message || err);
+      toast.error(err?.message || "Erro ao atualizar registro financeiro");
+      return false;
+    }
+  };
+
+  const deleteFinancialRecord: AppContextType["deleteFinancialRecord"] = async (
+    id
+  ) => {
+    try {
+      const { error } = await supabase
+        .from("financial_records")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+
+      await loadAll();
+      return true;
+    } catch (err: any) {
+      console.error("deleteFinancialRecord:", err?.message || err);
+      toast.error(err?.message || "Erro ao excluir registro financeiro");
+      return false;
+    }
+  };
+
   /* ======================================================
      PROVIDER
 ====================================================== */
@@ -864,6 +944,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addAppointment,
         updateAppointment,
         deleteAppointment,
+        addFinancialRecord,
+        updateFinancialRecord,
+        deleteFinancialRecord,
       }}
     >
       {children}

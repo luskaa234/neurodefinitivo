@@ -1424,6 +1424,11 @@ export default function ExcelScheduleGrid() {
                   Reagendado: status será definido como pendente automaticamente.
                 </p>
               )}
+              {isReschedule && (
+                <p className="text-[10px] text-gray-500">
+                  O médico recebe notificação no login.
+                </p>
+              )}
             </div>
 
             <label className="flex items-center gap-2 text-[11px] text-gray-700">
@@ -1536,7 +1541,7 @@ export default function ExcelScheduleGrid() {
             onClick={closePanel}
             aria-label="Fechar painel"
           />
-          <aside className="relative ml-auto h-full w-full max-w-[520px] border-l bg-white p-4 overflow-y-auto">
+          <aside className="relative ml-auto h-full w-full max-w-[520px] border-l bg-white p-4 pb-28 overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-gray-900">
@@ -1840,12 +1845,17 @@ export default function ExcelScheduleGrid() {
                     Realizado
                   </Button>
                 </div>
-                {isReschedule && (
-                  <p className="text-[10px] text-amber-600">
-                    Reagendado: status será definido como pendente automaticamente.
-                  </p>
-                )}
-              </div>
+              {isReschedule && (
+                <p className="text-[10px] text-amber-600">
+                  Reagendado: status será definido como pendente automaticamente.
+                </p>
+              )}
+              {isReschedule && (
+                <p className="text-[10px] text-gray-500">
+                  O médico recebe notificação no login.
+                </p>
+              )}
+            </div>
 
               <label className="flex items-center gap-2 text-[11px] text-gray-700">
                 <input
@@ -1886,43 +1896,46 @@ export default function ExcelScheduleGrid() {
                 />
               </div>
 
-              <div className="flex gap-2 pt-1">
-                <Button
-                  className="flex-1 h-10 bg-purple-600 hover:bg-purple-700"
-                  onClick={save}
-                  disabled={conflictForm}
-                >
-                  {editing ? "Salvar alterações" : "Salvar"}
-                </Button>
-                <Button variant="outline" className="flex-1 h-10" onClick={closePanel}>
-                  Cancelar
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  onClick={() => sendWhatsApp("patient")}
-                >
-                  WhatsApp Paciente
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  onClick={() => sendWhatsApp("doctor")}
-                >
-                  WhatsApp Médico
-                </Button>
-                <Button
-                  type="button"
-                  className="h-10 col-span-2"
-                  onClick={() => sendWhatsApp("all")}
-                >
-                  WhatsApp Todos
-                </Button>
+              <div className="fixed bottom-0 left-0 right-0 z-10 border-t bg-white/95 backdrop-blur md:hidden">
+                <div className="mx-auto flex w-full max-w-[520px] flex-col gap-2 p-4">
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1 h-11 bg-purple-600 hover:bg-purple-700"
+                      onClick={save}
+                      disabled={conflictForm}
+                    >
+                      {editing ? "Salvar alterações" : "Salvar"}
+                    </Button>
+                    <Button variant="outline" className="flex-1 h-11" onClick={closePanel}>
+                      Cancelar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => sendWhatsApp("patient")}
+                    >
+                      WhatsApp Paciente
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => sendWhatsApp("doctor")}
+                    >
+                      WhatsApp Médico
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-11 col-span-2"
+                      onClick={() => sendWhatsApp("all")}
+                    >
+                      WhatsApp Todos
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {editing && selected && (

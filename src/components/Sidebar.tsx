@@ -162,10 +162,6 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               menuItems={menuItems}
               activeSection={activeSection}
               onSectionChange={(id) => {
-                if (id === "agendamento" && window.innerWidth < 400) {
-                  alert("📱 Agendamento não disponível nesta tela. Use um tablet ou computador para visualizar melhor.");
-                  return;
-                }
                 onSectionChange(id);
                 setIsOpen(false);
               }}

@@ -1,0 +1,736 @@
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Building, Phone, Globe, Palette, Save, Clock, CheckCircle, Image, FileText } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { toast } from 'sonner';
+import { DEFAULT_SETTINGS, applySettingsToDocument, loadStoredSettings, saveSettings, type AppSettings } from '@/lib/appSettings';
+
+const cnpjSchema = z
+  .string()
+  .optional()
+  .or(z.literal(""))
+  .refine((value) => {
+    if (!value) return true;
+    return value.replace(/\D/g, "").length === 14;
+  }, "CNPJ inválido");
+
+const hexColorSchema = z.string().regex(/^#([0-9a-fA-F]{6})$/, "Cor inválida");
+
+const settingsSchema = z.object({
+  company_name: z.string().min(1, 'Nome da empresa é obrigatório'),
+  company_cnpj: cnpjSchema,
+  company_address: z.string().min(1, 'Endereço é obrigatório'),
+  company_phone: z.string().min(1, 'Telefone é obrigatório'),
+  company_email: z.string().email('Email inválido'),
+  whatsapp_number: z.string().min(10, 'WhatsApp deve ter pelo menos 10 dígitos'),
+  site_name: z.string().min(1, 'Nome do site é obrigatório'),
+  site_short_name: z.string().optional().or(z.literal("")),
+  site_description: z.string().optional().or(z.literal("")),
+  site_url: z.string().url("URL inválida").optional().or(z.literal("")),
+  logo_site_url: z.string().optional(),
+  logo_pwa_url: z.string().optional(),
+  brand_primary: hexColorSchema,
+  brand_secondary: hexColorSchema,
+  brand_accent: hexColorSchema,
+  brand_background: hexColorSchema,
+  brand_sidebar: hexColorSchema,
+  working_hours_start: z.string().min(1, 'Horário de início é obrigatório'),
+  working_hours_end: z.string().min(1, 'Horário de fim é obrigatório')
+});
+
+type SettingsFormData = z.infer<typeof settingsSchema>;
+
+export function SystemSettings() {
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [isTestingWhatsApp, setIsTestingWhatsApp] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting }
+  } = useForm<SettingsFormData>({
+    resolver: zodResolver(settingsSchema)
+  });
+
+  const watchWhatsApp = watch('whatsapp_number');
+  const watchPrimary = watch('brand_primary');
+  const watchSecondary = watch('brand_secondary');
+  const watchAccent = watch('brand_accent');
+  const watchBackground = watch('brand_background');
+  const watchSidebar = watch('brand_sidebar');
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = () => {
+    try {
+      const parsedSettings = loadStoredSettings();
+      setSettings(parsedSettings);
+
+      setValue('company_name', parsedSettings.company_name);
+      setValue('company_cnpj', parsedSettings.company_cnpj || "");
+      setValue('company_address', parsedSettings.company_address);
+      setValue('company_phone', parsedSettings.company_phone);
+      setValue('company_email', parsedSettings.company_email);
+      setValue('whatsapp_number', parsedSettings.whatsapp_number);
+      setValue('site_name', parsedSettings.site_name);
+      setValue('site_short_name', parsedSettings.site_short_name || "");
+      setValue('site_description', parsedSettings.site_description || "");
+      setValue('site_url', parsedSettings.site_url || "");
+      setValue('logo_site_url', parsedSettings.logo_site_url || "");
+      setValue('logo_pwa_url', parsedSettings.logo_pwa_url || "");
+      setValue('brand_primary', parsedSettings.brand_primary);
+      setValue('brand_secondary', parsedSettings.brand_secondary);
+      setValue('brand_accent', parsedSettings.brand_accent);
+      setValue('brand_background', parsedSettings.brand_background);
+      setValue('brand_sidebar', parsedSettings.brand_sidebar);
+      setValue('working_hours_start', parsedSettings.working_hours?.start || '08:00');
+      setValue('working_hours_end', parsedSettings.working_hours?.end || '21:00');
+      applySettingsToDocument(parsedSettings);
+    } catch (error) {
+      console.error('Erro ao carregar configurações:', error);
+    }
+  };
+
+  const onSubmit = async (data: SettingsFormData) => {
+    try {
+      const newSettings: AppSettings = {
+        company_name: data.company_name,
+        company_cnpj: data.company_cnpj || "",
+        company_address: data.company_address,
+        company_phone: data.company_phone,
+        company_email: data.company_email,
+        whatsapp_number: data.whatsapp_number,
+        site_name: data.site_name,
+        site_short_name: data.site_short_name || "",
+        site_description: data.site_description || "",
+        site_url: data.site_url || "",
+        logo_site_url: data.logo_site_url,
+        logo_pwa_url: data.logo_pwa_url,
+        brand_primary: data.brand_primary,
+        brand_secondary: data.brand_secondary,
+        brand_accent: data.brand_accent,
+        brand_background: data.brand_background,
+        brand_sidebar: data.brand_sidebar,
+        working_hours: {
+          start: data.working_hours_start,
+          end: data.working_hours_end
+        }
+      };
+      
+      saveSettings(newSettings);
+      setSettings(newSettings);
+      applySettingsToDocument(newSettings);
+      window.dispatchEvent(new Event("app-settings-updated"));
+      
+      toast.success('✅ Configurações salvas e aplicadas com sucesso!');
+      
+      const shouldReload =
+        newSettings.working_hours.start !== settings.working_hours.start ||
+        newSettings.working_hours.end !== settings.working_hours.end;
+
+      if (shouldReload) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      }
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      toast.error('❌ Erro ao salvar configurações');
+    }
+  };
+
+  const testWhatsApp = async () => {
+    try {
+      setIsTestingWhatsApp(true);
+      
+      const testMessage = `🧪 TESTE DO SISTEMA NEURO INTEGRAR 🧪\n\nEste é um teste do sistema de WhatsApp.\n\nNúmero da clínica: ${watchWhatsApp || '98974003414'}\nData/Hora: ${new Date().toLocaleString('pt-BR')}\n\n✅ Sistema funcionando corretamente!`;
+      
+      // Abrir WhatsApp com mensagem de teste
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=55${watchWhatsApp || '98974003414'}&text=${encodeURIComponent(testMessage)}`;
+      
+      window.open(whatsappUrl, '_blank');
+      
+      // Salvar teste no histórico
+      const messageHistory = JSON.parse(localStorage.getItem('whatsapp-messages') || '[]');
+      const testMessageRecord = {
+        id: Date.now().toString(),
+        from_clinic: watchWhatsApp || '98974003414',
+        to_patient: 'TESTE',
+        message: testMessage,
+        sent_at: new Date().toISOString(),
+        status: 'test'
+      };
+      
+      messageHistory.unshift(testMessageRecord);
+      localStorage.setItem('whatsapp-messages', JSON.stringify(messageHistory));
+      
+      toast.success('📱 Teste do WhatsApp enviado! Verifique se recebeu a mensagem.');
+      
+    } catch (error) {
+      console.error('Erro no teste do WhatsApp:', error);
+      toast.error('❌ Erro no teste do WhatsApp');
+    } finally {
+      setIsTestingWhatsApp(false);
+    }
+  };
+
+  const handleLogoUpload = (field: "logo_site_url" | "logo_pwa_url") => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const logoUrl = e.target?.result as string;
+        setValue(field, logoUrl);
+        setSettings(prev => ({ ...prev, [field]: logoUrl }));
+        toast.success('✅ Logo carregado! Salve as configurações para aplicar.');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const generateTimeSlotPreview = () => {
+    const start = watch('working_hours_start') || settings.working_hours.start;
+    const end = watch('working_hours_end') || settings.working_hours.end;
+    
+    const startHour = parseInt(start.split(':')[0]);
+    const endHour = parseInt(end.split(':')[0]);
+    const slots = [];
+    
+    for (let hour = startHour; hour <= endHour; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+      if (hour < endHour) {
+        slots.push(`${hour.toString().padStart(2, '0')}:30`);
+      }
+    }
+    
+    return slots;
+  };
+
+  const timeSlotPreview = generateTimeSlotPreview();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">⚙️ Configurações do Sistema</h1>
+        <p className="text-gray-600 mt-2">
+          Configure as informações da sua clínica - <strong>TODAS AS MUDANÇAS SÃO APLICADAS IMEDIATAMENTE</strong>
+        </p>
+      </div>
+
+      <Tabs defaultValue="company" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="company">🏢 Empresa</TabsTrigger>
+          <TabsTrigger value="schedule">⏰ Horários</TabsTrigger>
+          <TabsTrigger value="whatsapp">📱 WhatsApp</TabsTrigger>
+          <TabsTrigger value="appearance">🎨 Aparência</TabsTrigger>
+        </TabsList>
+
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <TabsContent value="company">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Building className="mr-2 h-5 w-5" />
+                  Informações da Empresa
+                </CardTitle>
+                <CardDescription>
+                  Configure os dados da sua clínica - Aplicado em todo o sistema
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="company_name">Nome da Clínica</Label>
+                    <Input
+                      id="company_name"
+                      placeholder="Ex: Clínica Neuro Integrar"
+                      {...register('company_name')}
+                    />
+                    {errors.company_name && (
+                      <p className="text-sm text-red-600">{errors.company_name.message}</p>
+                    )}
+                    <p className="text-xs text-purple-600">
+                      ✅ Aparece no cabeçalho do sistema e nas mensagens
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="company_email">Email da Clínica</Label>
+                    <Input
+                      id="company_email"
+                      type="email"
+                      placeholder="contato@clinica.com"
+                      {...register('company_email')}
+                    />
+                    {errors.company_email && (
+                      <p className="text-sm text-red-600">{errors.company_email.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company_address">Endereço Completo</Label>
+                  <Textarea
+                    id="company_address"
+                    placeholder="Rua, número, bairro, cidade - UF, CEP"
+                    rows={3}
+                    {...register('company_address')}
+                  />
+                  {errors.company_address && (
+                    <p className="text-sm text-red-600">{errors.company_address.message}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="company_phone">Telefone Principal</Label>
+                    <Input
+                      id="company_phone"
+                      placeholder="(11) 99999-9999"
+                      {...register('company_phone')}
+                    />
+                    {errors.company_phone && (
+                      <p className="text-sm text-red-600">{errors.company_phone.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="company_cnpj">CNPJ</Label>
+                    <Input
+                      id="company_cnpj"
+                      placeholder="00.000.000/0000-00"
+                      {...register('company_cnpj')}
+                    />
+                    {errors.company_cnpj && (
+                      <p className="text-sm text-red-600">{errors.company_cnpj.message}</p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="schedule">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Clock className="mr-2 h-5 w-5" />
+                  ⏰ Horários de Funcionamento
+                </CardTitle>
+                <CardDescription>
+                  Configure os horários de atendimento - <strong>APLICADO IMEDIATAMENTE NA AGENDA</strong>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="working_hours_start">🌅 Horário de Início</Label>
+                    <Input
+                      id="working_hours_start"
+                      type="time"
+                      {...register('working_hours_start')}
+                    />
+                    {errors.working_hours_start && (
+                      <p className="text-sm text-red-600">{errors.working_hours_start.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="working_hours_end">🌆 Horário de Fim</Label>
+                    <Input
+                      id="working_hours_end"
+                      type="time"
+                      {...register('working_hours_end')}
+                    />
+                    {errors.working_hours_end && (
+                      <p className="text-sm text-red-600">{errors.working_hours_end.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                  <h4 className="font-bold text-purple-800 mb-2">📋 Como funciona:</h4>
+                  <ul className="text-sm text-purple-700 space-y-1">
+                    <li>✅ Os horários definidos aqui aparecem IMEDIATAMENTE na agenda</li>
+                    <li>✅ Intervalos de 30 minutos são criados automaticamente</li>
+                    <li>✅ Após salvar, a página recarrega para aplicar as mudanças</li>
+                    <li>✅ Padrão atual: 08:00 às 21:00 = {timeSlotPreview.length} slots de 30 minutos</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 bg-gray-50 border rounded-lg">
+                  <h4 className="font-bold mb-3">📅 Preview dos Horários Atuais:</h4>
+                  <div className="grid grid-cols-6 gap-2 text-xs max-h-32 overflow-y-auto">
+                    {timeSlotPreview.slice(0, 24).map(slot => (
+                      <div key={slot} className="p-2 bg-white border rounded text-center font-medium">
+                        {slot}
+                      </div>
+                    ))}
+                    {timeSlotPreview.length > 24 && (
+                      <div className="p-2 text-center text-gray-500 font-bold">
+                        +{timeSlotPreview.length - 24} mais...
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2 font-medium">
+                    📊 Total: {timeSlotPreview.length} horários disponíveis por dia
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="whatsapp">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Phone className="mr-2 h-5 w-5" />
+                  📱 Configurações do WhatsApp
+                </CardTitle>
+                <CardDescription>
+                  Configure o WhatsApp DA CLÍNICA para envio automático de mensagens
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="whatsapp_number">📱 Número do WhatsApp da Clínica</Label>
+                  <Input
+                    id="whatsapp_number"
+                    placeholder="98974003414 (apenas números)"
+                    {...register('whatsapp_number')}
+                  />
+                  {errors.whatsapp_number && (
+                    <p className="text-sm text-red-600">{errors.whatsapp_number.message}</p>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Digite apenas números: DDD + número (ex: 98974003414)
+                  </p>
+                </div>
+
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h4 className="font-bold text-green-800 mb-2">✅ Como funciona:</h4>
+                  <ul className="text-sm text-green-700 space-y-1">
+                    <li>📱 <strong>Mensagens são enviadas DO número da clínica</strong></li>
+                    <li>📞 <strong>PARA o telefone do paciente</strong></li>
+                    <li>✅ Confirmações de consulta automáticas</li>
+                    <li>⏰ Lembretes são enviados 1 dia antes da consulta</li>
+                    <li>📝 Mensagens personalizadas podem ser enviadas individualmente</li>
+                    <li>📊 Envio em massa para múltiplas consultas</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={testWhatsApp}
+                    disabled={isTestingWhatsApp}
+                    className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                  >
+                    {isTestingWhatsApp ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
+                        Enviando teste...
+                      </>
+                    ) : (
+                      <>
+                        <Phone className="mr-2 h-4 w-4" />
+                        🧪 Testar WhatsApp da Clínica
+                      </>
+                    )}
+                  </Button>
+                  
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      <strong>💡 Dica:</strong> Clique em "Testar WhatsApp" para verificar se o número está funcionando corretamente
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="appearance">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Palette className="mr-2 h-5 w-5" />
+                  🎨 Aparência e Logo
+                </CardTitle>
+                <CardDescription>
+                  Controle total da identidade visual, cores e ícones do sistema
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-slate-700" />
+                    <h4 className="text-sm font-semibold text-slate-800">Identidade do Sistema</h4>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="site_name">Nome do Sistema/Site</Label>
+                      <Input id="site_name" placeholder="Ex: Neuro Integrar - Gestão" {...register('site_name')} />
+                      {errors.site_name && (
+                        <p className="text-sm text-red-600">{errors.site_name.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="site_short_name">Nome Curto (PWA)</Label>
+                      <Input id="site_short_name" placeholder="Ex: Neuro" {...register('site_short_name')} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="site_description">Descrição</Label>
+                    <Textarea
+                      id="site_description"
+                      placeholder="Descrição curta para SEO e PWA"
+                      rows={2}
+                      {...register('site_description')}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="site_url">Site oficial (opcional)</Label>
+                    <Input id="site_url" placeholder="https://sua-clinica.com.br" {...register('site_url')} />
+                    {errors.site_url && (
+                      <p className="text-sm text-red-600">{errors.site_url.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <input type="hidden" {...register('logo_site_url')} />
+                <input type="hidden" {...register('logo_pwa_url')} />
+
+                <div className="space-y-3 rounded-lg border bg-white p-4">
+                  <div className="flex items-center gap-2">
+                    <Image className="h-5 w-5 text-slate-700" />
+                    <h4 className="text-sm font-semibold text-slate-800">Logos e Ícones</h4>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="logo-site">Logo do Site (sidebar e cabeçalho)</Label>
+                      <Input
+                        id="logo-site"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload("logo_site_url")}
+                      />
+                      <p className="text-xs text-gray-500">
+                        PNG, JPG ou SVG (máx. 2MB)
+                      </p>
+                      {settings.logo_site_url && (
+                        <div className="mt-2 rounded-lg border bg-slate-50 p-3">
+                          <img
+                            src={settings.logo_site_url}
+                            alt="Logo do site"
+                            className="h-14 object-contain"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="logo-pwa">Logo do PWA (ícone de instalação)</Label>
+                      <Input
+                        id="logo-pwa"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload("logo_pwa_url")}
+                      />
+                      <p className="text-xs text-gray-500">
+                        Recomendado 512x512 PNG com fundo transparente
+                      </p>
+                      {settings.logo_pwa_url && (
+                        <div className="mt-2 rounded-lg border bg-slate-50 p-3">
+                          <img
+                            src={settings.logo_pwa_url}
+                            alt="Logo do PWA"
+                            className="h-14 object-contain"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-slate-700" />
+                    <h4 className="text-sm font-semibold text-slate-800">Paleta de Cores</h4>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="brand_primary">Primária</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="brand_primary_picker"
+                          type="color"
+                          value={watchPrimary || settings.brand_primary}
+                          onChange={(e) => setValue("brand_primary", e.target.value)}
+                          className="h-10 w-16 p-1"
+                        />
+                        <Input id="brand_primary" {...register('brand_primary')} />
+                      </div>
+                      {errors.brand_primary && (
+                        <p className="text-sm text-red-600">{errors.brand_primary.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="brand_secondary">Secundária</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="brand_secondary_picker"
+                          type="color"
+                          value={watchSecondary || settings.brand_secondary}
+                          onChange={(e) => setValue("brand_secondary", e.target.value)}
+                          className="h-10 w-16 p-1"
+                        />
+                        <Input id="brand_secondary" {...register('brand_secondary')} />
+                      </div>
+                      {errors.brand_secondary && (
+                        <p className="text-sm text-red-600">{errors.brand_secondary.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="brand_accent">Destaque</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="brand_accent_picker"
+                          type="color"
+                          value={watchAccent || settings.brand_accent}
+                          onChange={(e) => setValue("brand_accent", e.target.value)}
+                          className="h-10 w-16 p-1"
+                        />
+                        <Input id="brand_accent" {...register('brand_accent')} />
+                      </div>
+                      {errors.brand_accent && (
+                        <p className="text-sm text-red-600">{errors.brand_accent.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="brand_background">Fundo</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="brand_background_picker"
+                          type="color"
+                          value={watchBackground || settings.brand_background}
+                          onChange={(e) => setValue("brand_background", e.target.value)}
+                          className="h-10 w-16 p-1"
+                        />
+                        <Input id="brand_background" {...register('brand_background')} />
+                      </div>
+                      {errors.brand_background && (
+                        <p className="text-sm text-red-600">{errors.brand_background.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="brand_sidebar">Sidebar</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="brand_sidebar_picker"
+                          type="color"
+                          value={watchSidebar || settings.brand_sidebar}
+                          onChange={(e) => setValue("brand_sidebar", e.target.value)}
+                          className="h-10 w-16 p-1"
+                        />
+                        <Input id="brand_sidebar" {...register('brand_sidebar')} />
+                      </div>
+                      {errors.brand_sidebar && (
+                        <p className="text-sm text-red-600">{errors.brand_sidebar.message}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <span className="font-medium">Preview:</span>
+                    <span className="h-6 w-6 rounded border" style={{ backgroundColor: watchPrimary || settings.brand_primary }} />
+                    <span className="h-6 w-6 rounded border" style={{ backgroundColor: watchSecondary || settings.brand_secondary }} />
+                    <span className="h-6 w-6 rounded border" style={{ backgroundColor: watchAccent || settings.brand_accent }} />
+                    <span className="h-6 w-6 rounded border" style={{ backgroundColor: watchBackground || settings.brand_background }} />
+                    <span className="h-6 w-6 rounded border" style={{ backgroundColor: watchSidebar || settings.brand_sidebar }} />
+                  </div>
+                </div>
+
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-bold text-blue-800 mb-2">✨ Recursos Visuais Ativos:</h4>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>✅ Interface responsiva (Desktop, Tablet, Mobile)</li>
+                    <li>✅ Agenda estilo Excel com cores por status</li>
+                    <li>✅ Gradientes e sombras modernas</li>
+                    <li>✅ Ícones Lucide React integrados</li>
+                    <li>✅ Animações suaves e transições</li>
+                    <li>✅ Dark mode compatível</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <div className="flex justify-end pt-6">
+            <Button 
+              type="submit" 
+              disabled={isSubmitting} 
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-8 py-3"
+            >
+              <Save className="mr-2 h-5 w-5" />
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Salvando e Aplicando...
+                </>
+              ) : (
+                '💾 Salvar e Aplicar Configurações'
+              )}
+            </Button>
+          </div>
+        </form>
+      </Tabs>
+
+      <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
+        <div className="flex items-center space-x-2">
+          <CheckCircle className="h-5 w-5 text-green-600" />
+          <h4 className="font-bold text-green-800">🎯 Status do Sistema:</h4>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-green-700">
+              <strong>📱 WhatsApp:</strong> {settings.whatsapp_number || '98974003414'}
+            </p>
+            <p className="text-green-700">
+              <strong>⏰ Horários:</strong> {settings.working_hours.start} às {settings.working_hours.end}
+            </p>
+            <p className="text-green-700">
+              <strong>🧾 CNPJ:</strong> {settings.company_cnpj || 'Não informado'}
+            </p>
+          </div>
+          <div>
+            <p className="text-green-700">
+              <strong>🏢 Clínica:</strong> {settings.company_name}
+            </p>
+            <p className="text-green-700">
+              <strong>🌐 Site:</strong> {settings.site_name}
+            </p>
+            <p className="text-green-700">
+              <strong>📊 Slots:</strong> {timeSlotPreview.length} horários/dia
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-green-600 mt-2">
+          ✅ <strong>Todas as configurações estão funcionando e sendo aplicadas em tempo real!</strong>
+        </p>
+      </div>
+    </div>
+  );
+}

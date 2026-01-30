@@ -26,6 +26,13 @@ const justificationSchema = z.object({
   date: z.string().min(1, 'Data é obrigatória')
 });
 
+const normalizePhone = (value?: string | null) => {
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('55') ? digits : `55${digits}`;
+};
+
 type JustificationFormData = z.infer<typeof justificationSchema>;
 
 interface Justification {
@@ -128,6 +135,26 @@ export function DoctorConsultations() {
     return patient?.phone || 'Não informado';
   };
 
+  const sendJustificationWhatsApp = (appointmentId: string) => {
+    const appointment = appointments.find((apt) => apt.id === appointmentId);
+    if (!appointment) {
+      toast.error('Consulta não encontrada para enviar WhatsApp.');
+      return;
+    }
+    const patientPhone = normalizePhone(getPatientPhone(appointment.patient_id));
+    if (!patientPhone) {
+      toast.error('Paciente sem telefone para WhatsApp.');
+      return;
+    }
+    const patientName = getPatientName(appointment.patient_id);
+    const dateTime = `${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}`;
+    const message = `Olá ${patientName}, sua consulta em ${dateTime} foi cancelada pelo médico (falta justificada).`;
+    window.open(
+      `https://api.whatsapp.com/send?phone=${patientPhone}&text=${encodeURIComponent(message)}`,
+      '_blank'
+    );
+  };
+
   const onSubmitJustification = async (data: JustificationFormData) => {
     try {
       const newJustification: Justification = {
@@ -148,6 +175,8 @@ export function DoctorConsultations() {
         status: 'cancelado',
         notes: `Falta justificada: ${data.reason} - ${data.description}`
       });
+
+      sendJustificationWhatsApp(data.appointment_id);
 
       toast.success('✅ Falta justificada com sucesso!');
       reset();

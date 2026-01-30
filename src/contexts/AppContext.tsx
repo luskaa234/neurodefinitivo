@@ -206,22 +206,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.open(url, "_blank");
   };
 
-  const notifyAppointmentWhatsApp = (params: {
+  const buildAppointmentMessages = (params: {
     type: "create" | "update" | "cancel" | "reschedule";
     appointment: Appointment;
     previous?: Appointment | null;
     patientIds: string[];
     doctorIds: string[];
   }) => {
-    if (typeof window === "undefined") return;
-    if (localStorage.getItem("whatsapp-auto") !== "1") {
-      return;
-    }
-    if (!navigator.onLine) {
-      toast.error("Sem internet para enviar WhatsApp.");
-      return;
-    }
-
     const { type, appointment, previous, patientIds, doctorIds } = params;
     const patientsList = getUsersByIds(patientIds);
     const doctorsList = getUsersByIds(doctorIds);
@@ -254,6 +245,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? `Olá ${doctorNames}, agendamento com ${patientNames} foi reagendado de ${prevDateTime} para ${dateTime}.`
             : `Olá ${doctorNames}, agendamento com ${patientNames} foi atualizado. Data/Hora: ${dateTime}. Status: ${statusLabel}.`;
 
+    return { patientsList, doctorsList, patientMessage, doctorMessage };
+  };
+
+  const logDoctorNotification = (
+    doctorId: string,
+    type: "create" | "update" | "cancel" | "reschedule",
+    message: string,
+    appointmentId: string
+  ) => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      doctor_id: doctorId,
+      appointment_id: appointmentId,
+      type,
+      message,
+      created_at: new Date().toISOString(),
+    };
+    const raw = localStorage.getItem("whatsapp-notifications");
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift(payload);
+    localStorage.setItem("whatsapp-notifications", JSON.stringify(list));
+  };
+
+  const notifyAppointmentWhatsApp = (params: {
+    type: "create" | "update" | "cancel" | "reschedule";
+    appointment: Appointment;
+    previous?: Appointment | null;
+    patientIds: string[];
+    doctorIds: string[];
+  }) => {
+    if (typeof window === "undefined") return;
+    if (!navigator.onLine) {
+      toast.error("Sem internet para enviar WhatsApp.");
+      return;
+    }
+
+    if (localStorage.getItem("whatsapp-auto") !== "1") {
+      return;
+    }
+
+    const { type, appointment, patientIds, doctorIds } = params;
+    const { patientsList, doctorsList, patientMessage, doctorMessage } =
+      buildAppointmentMessages(params);
+
     const missing: string[] = [];
 
     patientsList.forEach((p) => {
@@ -265,21 +301,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openWhatsApp(phone, patientMessage);
     });
 
-    const logDoctorNotification = (doctorId: string, message: string) => {
-      const payload = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        doctor_id: doctorId,
-        appointment_id: appointment.id,
-        type,
-        message,
-        created_at: new Date().toISOString(),
-      };
-      const raw = localStorage.getItem("whatsapp-notifications");
-      const list = raw ? JSON.parse(raw) : [];
-      list.unshift(payload);
-      localStorage.setItem("whatsapp-notifications", JSON.stringify(list));
-    };
-
     doctorsList.forEach((d) => {
       const phone = normalizePhone(d.phone);
       if (!phone) {
@@ -287,7 +308,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       openWhatsApp(phone, doctorMessage);
-      logDoctorNotification(d.id, doctorMessage);
+      logDoctorNotification(d.id, type, doctorMessage, appointment.id);
     });
 
     if (missing.length) {
@@ -564,6 +585,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await syncAppointmentDoctors(apt.id, doctorIds);
 
       await loadAll();
+      const { doctorsList, doctorMessage } = buildAppointmentMessages({
+        type: "create",
+        appointment: apt as Appointment,
+        patientIds,
+        doctorIds,
+      });
+      doctorsList.forEach((d) => {
+        logDoctorNotification(d.id, "create", doctorMessage, apt.id);
+      });
       notifyAppointmentWhatsApp({
         type: "create",
         appointment: apt as Appointment,
@@ -650,6 +680,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         patientIds: effectivePatientIds.filter(Boolean),
         doctorIds: effectiveDoctorIds.filter(Boolean),
       });
+
+      const { doctorsList, doctorMessage } = buildAppointmentMessages({
+        type,
+        appointment: nextAppointment,
+        previous,
+        patientIds: effectivePatientIds.filter(Boolean),
+        doctorIds: effectiveDoctorIds.filter(Boolean),
+      });
+      doctorsList.forEach((d) => {
+        logDoctorNotification(d.id, type, doctorMessage, nextAppointment.id);
+      });
       return true;
     } catch (err: any) {
       console.error("updateAppointment:", err?.message || err);
@@ -676,6 +717,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       await loadAll();
       if (previous) {
+        const { doctorsList, doctorMessage } = buildAppointmentMessages({
+          type: "cancel",
+          appointment: previous,
+          previous,
+          patientIds: previous.patient_ids ?? [previous.patient_id],
+          doctorIds: previous.doctor_ids ?? [previous.doctor_id],
+        });
+        doctorsList.forEach((d) => {
+          logDoctorNotification(d.id, "cancel", doctorMessage, previous.id);
+        });
         notifyAppointmentWhatsApp({
           type: "cancel",
           appointment: previous,

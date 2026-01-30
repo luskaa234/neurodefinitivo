@@ -874,7 +874,7 @@ export default function ExcelScheduleGrid() {
       <aside className="w-full border-b bg-gray-50 p-2 lg:w-[260px] lg:border-b-0 lg:border-r">
         {schedulerNotifications.length > 0 && (
           <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900">
-            <div className="font-semibold">Reagendar pendente</div>
+            <div className="font-semibold">Reagendar agora</div>
             <div className="mt-1 space-y-2">
               {schedulerNotifications.slice(0, 3).map((n) => (
                 <div key={n.id} className="rounded-md border border-amber-200 bg-white p-2">

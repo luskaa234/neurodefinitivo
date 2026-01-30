@@ -487,8 +487,8 @@ export function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Reagendamentos Pendentes</CardTitle>
-              <CardDescription>Consultas canceladas com falta justificada</CardDescription>
+              <CardTitle>Reagendamentos</CardTitle>
+              <CardDescription>Consultas justificadas aguardando reagendamento</CardDescription>
             </div>
             <Badge variant="secondary">{schedulerNotifications.length}</Badge>
           </CardHeader>

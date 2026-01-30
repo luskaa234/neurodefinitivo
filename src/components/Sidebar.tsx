@@ -76,6 +76,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       case "agendamento":
         return [
           ...baseItems,
+          { id: "usuarios", label: "Usuários", icon: Users },
           { id: "agendamento", label: "Agendamento", icon: Calendar },
           { id: "pacientes", label: "Pacientes", icon: Users },
           { id: "whatsapp", label: "WhatsApp", icon: MessageSquare },

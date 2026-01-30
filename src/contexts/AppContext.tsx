@@ -510,6 +510,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const clearedKey = "justifications-cleared";
+    if (localStorage.getItem(clearedKey) === "1") return;
+    localStorage.removeItem("doctor-justifications");
+    localStorage.removeItem("scheduler-notifications");
+    localStorage.setItem(clearedKey, "1");
+  }, []);
+
   /* ======================================================
      REALTIME
 ====================================================== */

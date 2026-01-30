@@ -64,73 +64,18 @@ export function Dashboard() {
     if (user?.role !== 'agendamento' && user?.role !== 'admin') return;
     const loadSchedulerNotifications = () => {
       const raw = localStorage.getItem('scheduler-notifications');
-      const rawJust = localStorage.getItem('doctor-justifications');
       let base: any[] = [];
-      let justifications: any[] = [];
       try {
         base = raw ? JSON.parse(raw) : [];
       } catch {
         base = [];
       }
-      try {
-        justifications = rawJust ? JSON.parse(rawJust) : [];
-      } catch {
-        justifications = [];
-      }
-      const existingIds = new Set((base || []).map((n: any) => n.appointment_id));
-      const fromJustifications = Array.isArray(justifications)
-        ? justifications
-            .filter((j: any) => !existingIds.has(j.appointment_id))
-            .map((j: any) => {
-              const appointment = appointments.find((apt) => apt.id === j.appointment_id);
-              return {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                appointment_id: j.appointment_id,
-                patient_id: appointment?.patient_id,
-                doctor_id: appointment?.doctor_id,
-                patient_name: appointment ? getPatientName(appointment.patient_id) : 'Paciente',
-                doctor_name: appointment ? getDoctorName(appointment.doctor_id) : 'Médico',
-                date: appointment
-                  ? new Date(appointment.date).toLocaleDateString('pt-BR')
-                  : '',
-                time: appointment?.time || '',
-                reason: j.reason,
-                created_at: j.created_at || new Date().toISOString(),
-              };
-            })
-        : [];
-
-      const fromAppointments = (appointments || [])
-        .filter((apt) => apt.status === 'cancelado' && typeof apt.notes === 'string' && apt.notes.toLowerCase().includes('falta justificada'))
-        .map((apt) => ({
-          id: `apt-${apt.id}`,
-          appointment_id: apt.id,
-          patient_id: apt.patient_id,
-          doctor_id: apt.doctor_id,
-          patient_name: getPatientName(apt.patient_id),
-          doctor_name: getDoctorName(apt.doctor_id),
-          date: new Date(apt.date).toLocaleDateString('pt-BR'),
-          time: apt.time || '',
-          reason: extractJustificationReason(apt.notes),
-          created_at: apt.created_at || new Date().toISOString(),
-        }));
-
-      const mergedRaw = [...fromAppointments, ...fromJustifications, ...(base || [])];
-      const seen = new Set<string>();
-      const merged = mergedRaw.filter((item: any) => {
-        if (!item?.appointment_id) return false;
-        if (seen.has(item.appointment_id)) return false;
-        seen.add(item.appointment_id);
-        return true;
-      });
-      localStorage.setItem('scheduler-notifications', JSON.stringify(merged));
-      setSchedulerNotifications(merged);
-      return;
+      setSchedulerNotifications(Array.isArray(base) ? base : []);
     };
     loadSchedulerNotifications();
     window.addEventListener('storage', loadSchedulerNotifications);
     return () => window.removeEventListener('storage', loadSchedulerNotifications);
-  }, [user?.role, appointments, doctors, patients]);
+  }, [user?.role]);
 
   const deleteDoctorNotification = (notificationId: string) => {
     const raw = localStorage.getItem('whatsapp-notifications');
@@ -204,12 +149,6 @@ export function Dashboard() {
   const getDoctorName = (doctorId: string) => {
     const doctor = doctors.find(d => d.id === doctorId);
     return doctor ? doctor.name : 'Médico não encontrado';
-  };
-
-  const extractJustificationReason = (notes?: string | null) => {
-    if (!notes) return 'Falta justificada';
-    const match = notes.match(/Falta justificada:\s*([^-\n]+)/i);
-    return match?.[1]?.trim() || 'Falta justificada';
   };
 
   const filteredPendingAppointments = pendingAppointments.filter((appointment) => {

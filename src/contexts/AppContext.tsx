@@ -289,18 +289,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (items.length <= 1) {
         return { patientId: p.id, message: patientMessageBase };
       }
-      const summary = items.join(", ");
-      const notice =
-        type === "cancel"
-          ? "Houve um cancelamento em um dos horários."
-          : type === "reschedule"
-            ? "Houve um reagendamento em um dos horários."
-            : type === "update"
-              ? "Houve uma atualização em um dos horários."
-              : "Agendamento confirmado.";
+      const summary = items
+        .map((item) => {
+          const [time, rest] = item.split(" ");
+          return `${time} com ${rest.replace(/^\(|\)$/g, "")}`;
+        })
+        .join("; ");
       return {
         patientId: p.id,
-        message: `Olá ${p.name}, você tem ${items.length} agendamentos em ${dateLabel}: ${summary}. ${notice}`,
+        message: `Olá ${p.name}, você terá consulta em ${dateLabel}: ${summary}.`,
       };
     });
 

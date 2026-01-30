@@ -565,9 +565,9 @@ export default function ExcelScheduleGrid() {
 
       if (sorted.length > 1) {
         const list = sorted
-          .map((a) => `${a.time} (${a.doctorNames}${a.type ? ` - ${a.type}` : ""})`)
-          .join(", ");
-        return `Olá ${getPaciente(id)}, você tem ${sorted.length} agendamentos em ${formatDateOnly(form.date)}: ${list}.`;
+          .map((a) => `${a.time} com ${a.doctorNames}${a.type ? ` - ${a.type}` : ""}`)
+          .join("; ");
+        return `Olá ${getPaciente(id)}, você terá consulta em ${formatDateOnly(form.date)}: ${list}.`;
       }
 
       return `Olá ${patientNames}, seu agendamento com ${doctorNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;

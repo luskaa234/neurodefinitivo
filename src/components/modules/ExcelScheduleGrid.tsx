@@ -273,6 +273,11 @@ export default function ExcelScheduleGrid() {
   ====================================================== */
   const getPaciente = (id: string) => patients.find((p) => p.id === id)?.name || "Paciente";
   const getMedico = (id: string) => doctors.find((d) => d.id === id)?.name || "Médico";
+  const extractJustificationReason = (notes?: string | null) => {
+    if (!notes) return "Falta justificada";
+    const match = notes.match(/Falta justificada:\s*([^-\n]+)/i);
+    return match?.[1]?.trim() || "Falta justificada";
+  };
 
   const getAllPatients = (apt: AptLike) => (apt.patient_ids?.length ? apt.patient_ids : uniq([apt.patient_id]));
   const getAllDoctors = (apt: AptLike) => (apt.doctor_ids?.length ? apt.doctor_ids : uniq([apt.doctor_id]));
@@ -834,21 +839,79 @@ export default function ExcelScheduleGrid() {
     if (typeof window === "undefined") return;
     const loadNotifications = () => {
       const raw = localStorage.getItem("scheduler-notifications");
-      if (!raw) {
-        setSchedulerNotifications([]);
-        return;
+      const rawJust = localStorage.getItem("doctor-justifications");
+      let base: any[] = [];
+      let justifications: any[] = [];
+      try {
+        base = raw ? JSON.parse(raw) : [];
+      } catch {
+        base = [];
       }
       try {
-        const parsed = JSON.parse(raw);
-        setSchedulerNotifications(Array.isArray(parsed) ? parsed : []);
+        justifications = rawJust ? JSON.parse(rawJust) : [];
       } catch {
-        setSchedulerNotifications([]);
+        justifications = [];
       }
+
+      const existingIds = new Set((base || []).map((n: any) => n.appointment_id));
+      const fromJustifications = Array.isArray(justifications)
+        ? justifications
+            .filter((j: any) => !existingIds.has(j.appointment_id))
+            .map((j: any) => {
+              const appointment = (appointments as AptLike[]).find((apt) => apt.id === j.appointment_id);
+              return {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                appointment_id: j.appointment_id,
+                patient_id: appointment?.patient_id,
+                doctor_id: appointment?.doctor_id,
+                patient_name: appointment ? getPaciente(appointment.patient_id) : "Paciente",
+                doctor_name: appointment ? getMedico(appointment.doctor_id) : "Médico",
+                date: appointment
+                  ? new Date(appointment.date).toLocaleDateString("pt-BR")
+                  : "",
+                time: appointment?.time || "",
+                reason: j.reason,
+                created_at: j.created_at || new Date().toISOString(),
+              };
+            })
+        : [];
+
+      const fromAppointments = (appointments as AptLike[])
+        .filter(
+          (apt) =>
+            apt.status === "cancelado" &&
+            typeof apt.notes === "string" &&
+            apt.notes.toLowerCase().includes("falta justificada")
+        )
+        .map((apt) => ({
+          id: `apt-${apt.id}`,
+          appointment_id: apt.id,
+          patient_id: apt.patient_id,
+          doctor_id: apt.doctor_id,
+          patient_name: getPaciente(apt.patient_id),
+          doctor_name: getMedico(apt.doctor_id),
+          date: new Date(apt.date).toLocaleDateString("pt-BR"),
+          time: apt.time || "",
+          reason: extractJustificationReason(apt.notes),
+          created_at: new Date().toISOString(),
+        }));
+
+      const mergedRaw = [...fromAppointments, ...fromJustifications, ...(base || [])];
+      const seen = new Set<string>();
+      const merged = mergedRaw.filter((item: any) => {
+        if (!item?.appointment_id) return false;
+        if (seen.has(item.appointment_id)) return false;
+        seen.add(item.appointment_id);
+        return true;
+      });
+
+      localStorage.setItem("scheduler-notifications", JSON.stringify(merged));
+      setSchedulerNotifications(merged);
     };
     loadNotifications();
     window.addEventListener("storage", loadNotifications);
     return () => window.removeEventListener("storage", loadNotifications);
-  }, []);
+  }, [appointments, doctors, patients]);
 
   useEffect(() => {
     const settings = loadStoredSettings();

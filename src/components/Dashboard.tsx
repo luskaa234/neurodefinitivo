@@ -31,6 +31,33 @@ export function Dashboard() {
   const [pendingSearch, setPendingSearch] = useState('');
   const [pendingDate, setPendingDate] = useState('');
   const [pendingType, setPendingType] = useState('');
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    doctor_id: string;
+    type: string;
+    message: string;
+    created_at: string;
+  }>>([]);
+
+  React.useEffect(() => {
+    if (user?.role !== 'medico' || !user.id) return;
+    const loadNotifications = () => {
+      const raw = localStorage.getItem('whatsapp-notifications');
+      if (!raw) {
+        setNotifications([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        setNotifications(parsed.filter((n: any) => n.doctor_id === user.id));
+      } catch {
+        setNotifications([]);
+      }
+    };
+    loadNotifications();
+    window.addEventListener('storage', loadNotifications);
+    return () => window.removeEventListener('storage', loadNotifications);
+  }, [user?.role, user?.id]);
 
   const today = new Date();
   const baseAppointments = Array.isArray(appointments)
@@ -403,6 +430,37 @@ export function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {user?.role === 'medico' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Notificações do WhatsApp</CardTitle>
+              <CardDescription>Atualizações recentes de agendamentos</CardDescription>
+            </div>
+            <Badge variant="secondary">{notifications.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {notifications.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhuma notificação recente.</p>
+            ) : (
+              <div className="space-y-3">
+                {notifications.slice(0, 4).map((note) => (
+                  <div key={note.id} className="rounded-lg border p-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold capitalize">{note.type}</span>
+                      <span className="text-xs text-gray-500">
+                        {new Date(note.created_at).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-gray-700">{note.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>

@@ -38,11 +38,21 @@ interface Justification {
   created_at: string;
 }
 
+interface WhatsAppNotification {
+  id: string;
+  doctor_id: string;
+  appointment_id?: string | null;
+  type: "create" | "update" | "cancel" | "reschedule";
+  message: string;
+  created_at: string;
+}
+
 export function DoctorConsultations() {
   const { user } = useAuth();
   const { appointments, patients, updateAppointment } = useApp();
   const [isJustificationDialogOpen, setIsJustificationDialogOpen] = useState(false);
   const [justifications, setJustifications] = useState<Justification[]>([]);
+  const [notifications, setNotifications] = useState<WhatsAppNotification[]>([]);
 
   const {
     register,
@@ -65,6 +75,26 @@ export function DoctorConsultations() {
       }
     }
   }, []);
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+    const loadNotifications = () => {
+      const raw = localStorage.getItem('whatsapp-notifications');
+      if (!raw) {
+        setNotifications([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as WhatsAppNotification[];
+        setNotifications(parsed.filter((n) => n.doctor_id === user.id));
+      } catch {
+        setNotifications([]);
+      }
+    };
+    loadNotifications();
+    window.addEventListener('storage', loadNotifications);
+    return () => window.removeEventListener('storage', loadNotifications);
+  }, [user?.id]);
 
   const saveJustifications = (newJustifications: Justification[]) => {
     setJustifications(newJustifications);
@@ -237,6 +267,35 @@ export function DoctorConsultations() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Notificações do WhatsApp</CardTitle>
+            <CardDescription>Atualizações recentes de agendamentos</CardDescription>
+          </div>
+          <Badge variant="secondary">{notifications.length}</Badge>
+        </CardHeader>
+        <CardContent>
+          {notifications.length === 0 ? (
+            <p className="text-sm text-gray-500">Nenhuma notificação recente.</p>
+          ) : (
+            <div className="space-y-3">
+              {notifications.slice(0, 6).map((note) => (
+                <div key={note.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold capitalize">{note.type}</span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(note.created_at).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-gray-700">{note.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Estatísticas do médico */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

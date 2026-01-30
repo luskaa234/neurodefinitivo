@@ -214,6 +214,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     doctorIds: string[];
   }) => {
     if (typeof window === "undefined") return;
+    if (localStorage.getItem("whatsapp-auto") !== "1") {
+      return;
+    }
     if (!navigator.onLine) {
       toast.error("Sem internet para enviar WhatsApp.");
       return;
@@ -262,6 +265,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openWhatsApp(phone, patientMessage);
     });
 
+    const logDoctorNotification = (doctorId: string, message: string) => {
+      const payload = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        doctor_id: doctorId,
+        appointment_id: appointment.id,
+        type,
+        message,
+        created_at: new Date().toISOString(),
+      };
+      const raw = localStorage.getItem("whatsapp-notifications");
+      const list = raw ? JSON.parse(raw) : [];
+      list.unshift(payload);
+      localStorage.setItem("whatsapp-notifications", JSON.stringify(list));
+    };
+
     doctorsList.forEach((d) => {
       const phone = normalizePhone(d.phone);
       if (!phone) {
@@ -269,6 +287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       openWhatsApp(phone, doctorMessage);
+      logDoctorNotification(d.id, doctorMessage);
     });
 
     if (missing.length) {

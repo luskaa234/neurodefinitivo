@@ -147,6 +147,28 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
 }
 
+const getAllowedTimeSlots = (dateStr?: string) => {
+  if (!dateStr) return [];
+  const date = new Date(`${dateStr}T00:00:00`);
+  const day = date.getDay(); // 0=Dom ... 6=Sab
+
+  if (day === 0) return [];
+
+  const ranges: Array<[number, number]> =
+    day === 6 ? [[8, 12]] : [[8, 12], [13, 21]];
+
+  const slots: string[] = [];
+  ranges.forEach(([start, end]) => {
+    for (let h = start; h <= end; h++) {
+      slots.push(`${pad2(h)}:00`);
+    }
+  });
+  return slots;
+};
+
+const getDefaultTimeSlots = () =>
+  getAllowedTimeSlots("2026-01-02");
+
 const normalizePhone = (value?: string | null) => {
   if (!value) return "";
   const digits = value.replace(/\D/g, "");
@@ -213,6 +235,7 @@ export default function ExcelScheduleGrid() {
   const [isCreatingDoctor, setIsCreatingDoctor] = useState(false);
   const [quickPatientName, setQuickPatientName] = useState("");
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
+  const [autoWhatsApp, setAutoWhatsApp] = useState(false);
   const [workingHours, setWorkingHours] = useState<{ start: string; end: string }>({
     start: "08:00",
     end: "21:00",
@@ -257,6 +280,16 @@ export default function ExcelScheduleGrid() {
     const nextTime = normalizeTime(form.time);
     return selected.date !== form.date || prevTime !== nextTime;
   }, [editing, selected, form.date, form.time]);
+
+  const allowedTimeSlots = useMemo(() => getAllowedTimeSlots(form.date), [form.date]);
+
+  useEffect(() => {
+    if (!form.date || !form.time) return;
+    const normalized = normalizeTime(form.time);
+    if (normalized && !allowedTimeSlots.includes(normalized)) {
+      setForm((s) => ({ ...s, time: "" }));
+    }
+  }, [form.date, form.time, allowedTimeSlots]);
 
   /* ======================================================
      CONFLITO REAL (multi médicos)
@@ -338,16 +371,7 @@ export default function ExcelScheduleGrid() {
     return Array.from({ length: 5 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
-  const timeSlots = useMemo(() => {
-    const slots: string[] = [];
-    const startHour = Number(workingHours.start.split(":")[0] || 8);
-    const endHour = Number(workingHours.end.split(":")[0] || 21);
-    for (let h = startHour; h <= endHour; h++) {
-      slots.push(`${pad2(h)}:00`);
-      if (h !== endHour) slots.push(`${pad2(h)}:30`);
-    }
-    return slots;
-  }, [workingHours]);
+  const timeSlots = useMemo(() => getDefaultTimeSlots(), []);
 
   const isSlotAvailable = (dayIndex: number, time: string) => {
     if (selectedDoctorId === "all") return true;
@@ -497,6 +521,28 @@ export default function ExcelScheduleGrid() {
     const messagePatient = buildWhatsAppMessage("patient");
     const messageDoctor = buildWhatsAppMessage("doctor");
 
+    const logDoctorNotification = (doctorId: string, message: string) => {
+      if (typeof window === "undefined") return;
+      const payload = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        doctor_id: doctorId,
+        appointment_id: selected?.id || null,
+        type: isReschedule
+          ? "reschedule"
+          : form.status === "cancelado"
+            ? "cancel"
+            : editing
+              ? "update"
+              : "create",
+        message,
+        created_at: new Date().toISOString(),
+      };
+      const raw = localStorage.getItem("whatsapp-notifications");
+      const list = raw ? JSON.parse(raw) : [];
+      list.unshift(payload);
+      localStorage.setItem("whatsapp-notifications", JSON.stringify(list));
+    };
+
     if (target === "patient" || target === "all") {
       form.patient_ids.forEach((id) => {
         const phone = normalizePhone(patients.find((p) => p.id === id)?.phone);
@@ -522,6 +568,7 @@ export default function ExcelScheduleGrid() {
           `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messageDoctor)}`,
           "_blank"
         );
+        logDoctorNotification(id, messageDoctor);
       });
     }
 
@@ -707,6 +754,17 @@ export default function ExcelScheduleGrid() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("whatsapp-auto");
+    setAutoWhatsApp(saved === "1");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("whatsapp-auto", autoWhatsApp ? "1" : "0");
+  }, [autoWhatsApp]);
 
   useEffect(() => {
     const settings = loadStoredSettings();
@@ -1297,17 +1355,22 @@ export default function ExcelScheduleGrid() {
   {/* HORA */}
   <div className="space-y-1">
     <label className="text-[11px] text-gray-600">Hora*</label>
-    <Input
-      type="time"
-      className="h-10"
+    <Select
       value={normalizeTime(form.time)}
-      onChange={(e) =>
-        setForm((s) => ({
-          ...s,
-          time: normalizeTime(e.target.value),
-        }))
-      }
-    />
+      onValueChange={(v) => setForm((s) => ({ ...s, time: v }))}
+      disabled={!form.date || allowedTimeSlots.length === 0}
+    >
+      <SelectTrigger className="h-10">
+        <SelectValue placeholder={form.date ? "Selecione" : "Escolha a data"} />
+      </SelectTrigger>
+      <SelectContent>
+        {allowedTimeSlots.map((t) => (
+          <SelectItem key={t} value={t}>
+            {t}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   </div>
 </div>
 
@@ -1362,6 +1425,15 @@ export default function ExcelScheduleGrid() {
                 </p>
               )}
             </div>
+
+            <label className="flex items-center gap-2 text-[11px] text-gray-700">
+              <input
+                type="checkbox"
+                checked={autoWhatsApp}
+                onChange={(e) => setAutoWhatsApp(e.target.checked)}
+              />
+              WhatsApp automático ao salvar (opcional)
+            </label>
 
             <label className="flex items-center gap-2 text-[11px] text-gray-700">
               <input
@@ -1705,17 +1777,22 @@ export default function ExcelScheduleGrid() {
 
                 <div className="space-y-1">
                   <label className="text-[11px] text-gray-600">Hora*</label>
-                  <Input
-                    type="time"
-                    className="h-10"
+                  <Select
                     value={normalizeTime(form.time)}
-                    onChange={(e) =>
-                      setForm((s) => ({
-                        ...s,
-                        time: normalizeTime(e.target.value),
-                      }))
-                    }
-                  />
+                    onValueChange={(v) => setForm((s) => ({ ...s, time: v }))}
+                    disabled={!form.date || allowedTimeSlots.length === 0}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder={form.date ? "Selecione" : "Escolha a data"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allowedTimeSlots.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -1769,6 +1846,15 @@ export default function ExcelScheduleGrid() {
                   </p>
                 )}
               </div>
+
+              <label className="flex items-center gap-2 text-[11px] text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={autoWhatsApp}
+                  onChange={(e) => setAutoWhatsApp(e.target.checked)}
+                />
+                WhatsApp automático ao salvar (opcional)
+              </label>
 
               <label className="flex items-center gap-2 text-[11px] text-gray-700">
                 <input

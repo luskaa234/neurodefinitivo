@@ -310,7 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? `Olá ${doctorNames}, agendamento com ${patientNames} foi reagendado de ${prevDateTime} para ${dateTime}.`
             : `Olá ${doctorNames}, agendamento com ${patientNames} foi atualizado. Data/Hora: ${dateTime}. Status: ${statusLabel}.`;
 
-    return { patientsList, doctorsList, patientMessage, doctorMessage };
+    return { patientsList, doctorsList, patientSummaries, doctorMessage };
   };
 
   const logDoctorNotification = (
@@ -352,7 +352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     const { type, appointment, patientIds, doctorIds } = params;
-    const { patientsList, doctorsList, patientMessage, doctorMessage } =
+    const { patientsList, doctorsList, patientSummaries, doctorMessage } =
       buildAppointmentMessages(params);
 
     const missing: string[] = [];

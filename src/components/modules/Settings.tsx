@@ -77,28 +77,38 @@ export function SystemSettings() {
   const loadSettings = () => {
     try {
       const parsedSettings = loadStoredSettings();
-      setSettings(parsedSettings);
+      const normalized: AppSettings = {
+        ...parsedSettings,
+        logo_site_url: DEFAULT_SETTINGS.logo_site_url,
+        logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
+        brand_primary: DEFAULT_SETTINGS.brand_primary,
+        brand_secondary: DEFAULT_SETTINGS.brand_secondary,
+        brand_accent: DEFAULT_SETTINGS.brand_accent,
+        brand_background: DEFAULT_SETTINGS.brand_background,
+        brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
+      };
+      setSettings(normalized);
 
-      setValue('company_name', parsedSettings.company_name);
-      setValue('company_cnpj', parsedSettings.company_cnpj || "");
-      setValue('company_address', parsedSettings.company_address);
-      setValue('company_phone', parsedSettings.company_phone);
-      setValue('company_email', parsedSettings.company_email);
-      setValue('whatsapp_number', parsedSettings.whatsapp_number);
-      setValue('site_name', parsedSettings.site_name);
-      setValue('site_short_name', parsedSettings.site_short_name || "");
-      setValue('site_description', parsedSettings.site_description || "");
-      setValue('site_url', parsedSettings.site_url || "");
-      setValue('logo_site_url', parsedSettings.logo_site_url || "");
-      setValue('logo_pwa_url', parsedSettings.logo_pwa_url || "");
-      setValue('brand_primary', parsedSettings.brand_primary);
-      setValue('brand_secondary', parsedSettings.brand_secondary);
-      setValue('brand_accent', parsedSettings.brand_accent);
-      setValue('brand_background', parsedSettings.brand_background);
-      setValue('brand_sidebar', parsedSettings.brand_sidebar);
-      setValue('working_hours_start', parsedSettings.working_hours?.start || '08:00');
-      setValue('working_hours_end', parsedSettings.working_hours?.end || '21:00');
-      applySettingsToDocument(parsedSettings);
+      setValue('company_name', normalized.company_name);
+      setValue('company_cnpj', normalized.company_cnpj || "");
+      setValue('company_address', normalized.company_address);
+      setValue('company_phone', normalized.company_phone);
+      setValue('company_email', normalized.company_email);
+      setValue('whatsapp_number', normalized.whatsapp_number);
+      setValue('site_name', normalized.site_name);
+      setValue('site_short_name', normalized.site_short_name || "");
+      setValue('site_description', normalized.site_description || "");
+      setValue('site_url', normalized.site_url || "");
+      setValue('logo_site_url', normalized.logo_site_url || "");
+      setValue('logo_pwa_url', normalized.logo_pwa_url || "");
+      setValue('brand_primary', normalized.brand_primary);
+      setValue('brand_secondary', normalized.brand_secondary);
+      setValue('brand_accent', normalized.brand_accent);
+      setValue('brand_background', normalized.brand_background);
+      setValue('brand_sidebar', normalized.brand_sidebar);
+      setValue('working_hours_start', normalized.working_hours?.start || '08:00');
+      setValue('working_hours_end', normalized.working_hours?.end || '21:00');
+      applySettingsToDocument(normalized);
     } catch (error) {
       console.error('Erro ao carregar configurações:', error);
     }
@@ -117,13 +127,13 @@ export function SystemSettings() {
         site_short_name: data.site_short_name || "",
         site_description: data.site_description || "",
         site_url: data.site_url || "",
-        logo_site_url: data.logo_site_url,
-        logo_pwa_url: data.logo_pwa_url,
-        brand_primary: data.brand_primary,
-        brand_secondary: data.brand_secondary,
-        brand_accent: data.brand_accent,
-        brand_background: data.brand_background,
-        brand_sidebar: data.brand_sidebar,
+        logo_site_url: DEFAULT_SETTINGS.logo_site_url,
+        logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
+        brand_primary: DEFAULT_SETTINGS.brand_primary,
+        brand_secondary: DEFAULT_SETTINGS.brand_secondary,
+        brand_accent: DEFAULT_SETTINGS.brand_accent,
+        brand_background: DEFAULT_SETTINGS.brand_background,
+        brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
         working_hours: {
           start: data.working_hours_start,
           end: data.working_hours_end

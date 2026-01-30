@@ -183,6 +183,12 @@ const formatDateTime = (date?: string, time?: string) => {
   return `${d}/${m}/${y} ${t}`;
 };
 
+const formatDateOnly = (date?: string) => {
+  if (!date) return "";
+  const [y, m, d] = date.split("-");
+  return `${d}/${m}/${y}`;
+};
+
 function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -518,7 +524,7 @@ export default function ExcelScheduleGrid() {
     }
   };
 
-  const buildWhatsAppMessage = (target: "patient" | "doctor") => {
+  const buildWhatsAppMessage = (target: "patient" | "doctor", patientId?: string) => {
     const patientNames = form.patient_ids.map(getPaciente).join(", ");
     const doctorNames = form.doctor_ids.map(getMedico).join(", ");
     const dateTime = formatDateTime(form.date, form.time);
@@ -529,6 +535,41 @@ export default function ExcelScheduleGrid() {
         : form.status;
 
     if (target === "patient") {
+      const id = patientId || form.patient_ids[0];
+      const dayAppointments = (appointments as unknown as AptLike[])
+        .filter((apt) => {
+          const patients = getAllPatients(apt);
+          return apt.date === form.date && patients.includes(id);
+        })
+        .map((apt) => ({
+          id: apt.id,
+          time: normalizeTime(apt.time),
+          doctorNames: getAllDoctors(apt).map(getMedico).join(", "),
+          type: apt.type,
+        }));
+
+      const includeCurrent =
+        !dayAppointments.some((a) => a.id === selected?.id) && form.date && form.time
+          ? [
+              ...dayAppointments,
+              {
+                id: selected?.id || "new",
+                time: normalizeTime(form.time),
+                doctorNames,
+                type: form.type,
+              },
+            ]
+          : dayAppointments;
+
+      const sorted = includeCurrent.sort((a, b) => a.time.localeCompare(b.time));
+
+      if (sorted.length > 1) {
+        const list = sorted
+          .map((a) => `${a.time} (${a.doctorNames}${a.type ? ` - ${a.type}` : ""})`)
+          .join(", ");
+        return `Olá ${getPaciente(id)}, você tem ${sorted.length} agendamentos em ${formatDateOnly(form.date)}: ${list}.`;
+      }
+
       return `Olá ${patientNames}, seu agendamento com ${doctorNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
     }
     return `Olá ${doctorNames}, agendamento com ${patientNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
@@ -574,7 +615,7 @@ export default function ExcelScheduleGrid() {
           return;
         }
         window.open(
-          `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messagePatient)}`,
+          `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(buildWhatsAppMessage("patient", id))}`,
           "_blank"
         );
       });

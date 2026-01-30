@@ -199,6 +199,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return `${d}/${m}/${y} ${t}`;
   };
 
+  const formatDateOnly = (date?: string) => {
+    if (!date) return "";
+    const [y, m, d] = date.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  const getDoctorName = (doctorId?: string | null) =>
+    doctorId ? getUserById(doctorId)?.name || "Médico" : "Médico";
+
+  const getPatientDailySummary = (
+    patientId: string,
+    date: string,
+    includeAppointment?: Appointment
+  ) => {
+    const dayAppointments = appointments.filter(
+      (apt) =>
+        apt.date === date &&
+        (apt.patient_id === patientId ||
+          (apt.patient_ids || []).includes(patientId))
+    );
+
+    const include =
+      includeAppointment &&
+      !dayAppointments.some((a) => a.id === includeAppointment.id)
+        ? [...dayAppointments, includeAppointment]
+        : dayAppointments;
+
+    const sorted = include
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
+          new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+      );
+
+    return sorted.map((apt) => {
+      const doctorName = getDoctorName(apt.doctor_id);
+      const time = normalizeTimeToHHMM(apt.time);
+      const type = apt.type ? ` - ${apt.type}` : "";
+      return `${time} (${doctorName}${type})`;
+    });
+  };
+
   const openWhatsApp = (to: string, message: string) => {
     const url = `https://api.whatsapp.com/send?phone=${to}&text=${encodeURIComponent(
       message
@@ -227,7 +270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const statusLabel = toUiStatus(appointment.status);
 
-    const patientMessage =
+    const patientMessageBase =
       type === "create"
         ? `Olá ${patientNames}, seu agendamento foi criado com ${doctorNames} para ${dateTime}. Status: ${statusLabel}.`
         : type === "cancel"
@@ -235,6 +278,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           : type === "reschedule"
             ? `Olá ${patientNames}, seu agendamento com ${doctorNames} foi reagendado de ${prevDateTime} para ${dateTime}.`
             : `Olá ${patientNames}, seu agendamento com ${doctorNames} foi atualizado. Data/Hora: ${dateTime}. Status: ${statusLabel}.`;
+
+    const dateLabel = formatDateOnly(appointment.date);
+    const patientSummaries = patientsList.map((p) => {
+      const items = getPatientDailySummary(
+        p.id,
+        appointment.date,
+        appointment
+      );
+      if (items.length <= 1) {
+        return { patientId: p.id, message: patientMessageBase };
+      }
+      const summary = items.join(", ");
+      const notice =
+        type === "cancel"
+          ? "Houve um cancelamento em um dos horários."
+          : type === "reschedule"
+            ? "Houve um reagendamento em um dos horários."
+            : type === "update"
+              ? "Houve uma atualização em um dos horários."
+              : "Agendamento confirmado.";
+      return {
+        patientId: p.id,
+        message: `Olá ${p.name}, você tem ${items.length} agendamentos em ${dateLabel}: ${summary}. ${notice}`,
+      };
+    });
 
     const doctorMessage =
       type === "create"
@@ -292,13 +360,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const missing: string[] = [];
 
-    patientsList.forEach((p) => {
-      const phone = normalizePhone(p.phone);
-      if (!phone) {
-        missing.push(`Paciente: ${p.name}`);
+    patientSummaries.forEach((summary) => {
+      const patient = patientsList.find((p) => p.id === summary.patientId);
+      const phone = normalizePhone(patient?.phone);
+      if (!phone || !patient) {
+        missing.push(`Paciente: ${patient?.name || summary.patientId}`);
         return;
       }
-      openWhatsApp(phone, patientMessage);
+      openWhatsApp(phone, summary.message);
     });
 
     doctorsList.forEach((d) => {

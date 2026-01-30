@@ -375,7 +375,7 @@ export default function ExcelScheduleGrid() {
      EVENTOS
   ====================================================== */
   const weekDates = useMemo(() => {
-    return Array.from({ length: 5 }, (_, i) => addDays(currentWeekStart, i));
+    return Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
   const timeSlots = useMemo(() => getDefaultTimeSlots(), []);
@@ -394,7 +394,7 @@ export default function ExcelScheduleGrid() {
   const doctorWeekAppointments = useMemo(() => {
     if (!selectedDoctorId) return [];
     const weekStartStr = toDateStr(currentWeekStart);
-    const weekEndStr = toDateStr(addDays(currentWeekStart, 6));
+    const weekEndStr = toDateStr(addDays(currentWeekStart, 5));
 
     return filtered.filter((apt) => {
       if (selectedDoctorId !== "all" && !getAllDoctors(apt).includes(selectedDoctorId)) return false;
@@ -1130,7 +1130,7 @@ export default function ExcelScheduleGrid() {
                     Hora
                   </th>
                   {weekDates.map((d, idx) => {
-                    const dayLabel = ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA"][idx] || "";
+                    const dayLabel = ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO"][idx] || "";
                     return (
                       <th
                         key={toDateStr(d)}

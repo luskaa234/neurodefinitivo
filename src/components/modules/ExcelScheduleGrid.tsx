@@ -1062,8 +1062,8 @@ export default function ExcelScheduleGrid() {
       </aside>
 
       {/* ================== AGENDA SEMANAL ================== */}
-      <main className="flex-1 p-2 bg-white min-h-[60vh] lg:overflow-hidden">
-        <div className="mb-3 space-y-3">
+      <main className="flex-1 min-h-0 p-2 bg-white flex flex-col">
+        <div className="mb-3 space-y-3 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white p-3 shadow-sm">
             <div className="flex flex-col">
               <span className="text-xs text-gray-500">Resumo do dia</span>
@@ -1121,7 +1121,7 @@ export default function ExcelScheduleGrid() {
           </div>
         </div>
 
-        <div className="h-full overflow-x-auto lg:overflow-x-visible lg:max-h-[78vh] lg:overflow-y-auto lg:pr-2">
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto lg:overflow-x-visible lg:pr-2">
           <div className="w-full">
             <table className="min-w-[720px] w-full table-fixed border-collapse text-[10px] sm:text-[11px]">
               <thead>

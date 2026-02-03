@@ -18,12 +18,13 @@ import {
   PieChart
 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
+import { formatDateBR, nowLocal } from '@/utils/date';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 export function FinanceiroDashboard() {
   const { financialRecords, appointments, patients } = useApp();
 
-  const today = new Date();
+  const today = nowLocal();
   const currentMonth = today.getMonth();
   const currentYear = today.getFullYear();
   const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
@@ -301,7 +302,7 @@ export function FinanceiroDashboard() {
                     <p className="font-medium mt-1">{transaction.description}</p>
                     <p className="text-sm text-gray-600">{transaction.category}</p>
                     <p className="text-xs text-gray-500">
-                      {new Date(transaction.date).toLocaleDateString('pt-BR')}
+                      {formatDateBR(transaction.date)}
                     </p>
                   </div>
                   <div className="text-right">

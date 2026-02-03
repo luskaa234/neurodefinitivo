@@ -23,6 +23,7 @@ import { PatientFinance } from "@/components/modules/PatientFinance";
 import { PatientAppointments } from "@/components/modules/PatientAppointments";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { formatDateFullBR, nowLocal } from "@/utils/date";
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -45,6 +46,10 @@ export default function Home() {
       if (next) setActiveSection(next);
     };
     applyFromHash();
+    console.log(
+      "Local timezone:",
+      Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
     window.addEventListener("hashchange", applyFromHash);
     return () => window.removeEventListener("hashchange", applyFromHash);
   }, []);
@@ -147,7 +152,14 @@ export default function Home() {
           onSectionChange={setSection}
         />
         <main className="flex-1 overflow-auto">
-          <div className="p-3 sm:p-4 md:p-6 lg:p-8">{renderContent()}</div>
+          <div className="p-3 sm:p-4 md:p-6 lg:p-8">
+            <div className="mb-3 flex justify-end">
+              <div className="rounded-full border border-purple-200 bg-white/90 px-4 py-1 text-xs font-semibold text-purple-700 shadow-sm">
+                {`Hoje é ${formatDateFullBR(nowLocal())}`}
+              </div>
+            </div>
+            {renderContent()}
+          </div>
         </main>
       </div>
       <Toaster position="top-right" richColors />

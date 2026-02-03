@@ -22,6 +22,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
+import { formatDateBR, formatDateTimeBR } from "@/utils/date";
 
 // ===== Schema (cadastro manual) =====
 const patientSchema = z.object({
@@ -567,13 +568,13 @@ export function PatientManagement() {
               <div><b>Email:</b> {viewPatient.email}</div>
               <div><b>Telefone:</b> {viewPatient.phone || "-"}</div>
               <div><b>CPF:</b> {viewPatient.cpf || "-"}</div>
-              <div><b>Nascimento:</b> {viewPatient.birth_date ? new Date(viewPatient.birth_date).toLocaleDateString("pt-BR") : "-"}</div>
+              <div><b>Nascimento:</b> {viewPatient.birth_date ? formatDateBR(viewPatient.birth_date) : "-"}</div>
               <div className="col-span-2"><b>Endereço:</b> {viewPatient.address || "-"}</div>
               <div className="col-span-2"><b>Responsável:</b> {viewPatient.responsavel || "-"}</div>
               <div className="col-span-2"><b>Serviço(s):</b> {viewPatient.tipo_atendimento || "-"}</div>
               <div><b>Valor:</b> {viewPatient.valor_mensal != null ? `R$ ${Number(viewPatient.valor_mensal).toLocaleString("pt-BR")}` : "-"}</div>
               <div><b>Status:</b> {viewPatient.is_active ? "Ativo" : "Inativo"}</div>
-              <div className="col-span-2"><b>Criado em:</b> {viewPatient.created_at ? new Date(viewPatient.created_at).toLocaleString("pt-BR") : "-"}</div>
+              <div className="col-span-2"><b>Criado em:</b> {viewPatient.created_at ? formatDateTimeBR(viewPatient.created_at) : "-"}</div>
             </div>
           )}
         </DialogContent>

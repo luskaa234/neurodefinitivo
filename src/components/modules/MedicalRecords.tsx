@@ -51,6 +51,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { formatDateBR } from "@/utils/date";
 
 const medicalRecordSchema = z.object({
   patient_id: z.string().min(1, "Paciente é obrigatório"),
@@ -293,9 +294,7 @@ export function MedicalRecords() {
         </h2>
         <p><strong>Paciente:</strong> ${getPatientName(record.patient_id)}</p>
         <p><strong>Médico:</strong> ${getDoctorName(record.doctor_id)}</p>
-        <p><strong>Data:</strong> ${new Date(record.date).toLocaleDateString(
-          "pt-BR"
-        )}</p>
+        <p><strong>Data:</strong> ${formatDateBR(record.date)}</p>
         <hr/>
         <h3>Diagnóstico</h3>
         <p>${record.diagnosis}</p>
@@ -561,7 +560,7 @@ export function MedicalRecords() {
               {filteredRecords.map((record) => (
                 <TableRow key={record.id}>
                   <TableCell>
-                    {new Date(record.date).toLocaleDateString("pt-BR")}
+                    {formatDateBR(record.date)}
                   </TableCell>
                   <TableCell>{getPatientName(record.patient_id)}</TableCell>
                   <TableCell>{getDoctorName(record.doctor_id)}</TableCell>
@@ -637,7 +636,7 @@ export function MedicalRecords() {
               </p>
               <p>
                 <strong>Data:</strong>{" "}
-                {new Date(selectedRecord.date).toLocaleDateString("pt-BR")}
+                {formatDateBR(selectedRecord.date)}
               </p>
               <div>
                 <h3 className="font-semibold">Diagnóstico</h3>

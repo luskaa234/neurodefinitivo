@@ -55,6 +55,7 @@ import {
   Save,
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { formatDateBR, nowLocal } from "@/utils/date";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -76,7 +77,7 @@ type AppointmentFormData = z.infer<typeof appointmentSchema>;
 export function ScheduleGrid() {
   const { appointments, doctors, patients, services, addAppointment, updateAppointment, deleteAppointment } =
     useApp();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(nowLocal());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<any>(null);
@@ -166,9 +167,7 @@ export function ScheduleGrid() {
                   </p>
                   <p>
                     <strong>Data:</strong>{" "}
-                    {new Date(editingAppointment.date).toLocaleDateString(
-                      "pt-BR"
-                    )}
+                    {formatDateBR(editingAppointment.date)}
                   </p>
                   <p>
                     <strong>Horário:</strong> {editingAppointment.time}

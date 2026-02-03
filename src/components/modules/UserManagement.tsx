@@ -58,6 +58,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { formatDateBR } from "@/utils/date";
 
 const EMAIL_DOMAIN = "sistema.com"; // <--- ajuste aqui para seu domínio real
 
@@ -601,7 +602,7 @@ export function UserManagement() {
                 </div>
               </div>
 
-              <p className="text-sm"><b>Criado em:</b> {selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString("pt-BR") : "-"}</p>
+              <p className="text-sm"><b>Criado em:</b> {selectedUser.created_at ? formatDateBR(selectedUser.created_at) : "-"}</p>
 
               <div className="flex gap-2 mt-2">
                 <Button size="sm" onClick={() => { copyToClipboard(selectedUser.email || "", "Email copiado"); }}>

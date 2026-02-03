@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApp } from "@/contexts/AppContext";
-import { format } from "date-fns";
+import { formatDateBR, nowLocal } from "@/utils/date";
 
 type AppointmentStatus = "agendado" | "confirmado" | "realizado" | "cancelado" | "falta";
 
@@ -36,7 +36,7 @@ export function PatientDashboard({ patientId }: PatientDashboardProps) {
   };
 
   const stats = useMemo(() => {
-    const now = new Date();
+    const now = nowLocal();
     const upcoming = patientAppointments.filter(
       (apt) => new Date(`${apt.date}T${apt.time || "00:00"}`) >= now && apt.status !== "cancelado"
     ).length;
@@ -93,7 +93,7 @@ export function PatientDashboard({ patientId }: PatientDashboardProps) {
                 {patientAppointments.map((apt) => (
                   <div key={apt.id} className="rounded-lg border p-3">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium">{format(new Date(apt.date), "dd/MM/yyyy")} • {apt.time}</p>
+                      <p className="font-medium">{formatDateBR(apt.date)} • {apt.time}</p>
                       <Badge variant={statusVariant[apt.status as AppointmentStatus]}>
                         {apt.status}
                       </Badge>
@@ -115,7 +115,7 @@ export function PatientDashboard({ patientId }: PatientDashboardProps) {
                   <TableBody>
                     {patientAppointments.map((apt) => (
                       <TableRow key={apt.id}>
-                        <TableCell>{format(new Date(apt.date), "dd/MM/yyyy")}</TableCell>
+                        <TableCell>{formatDateBR(apt.date)}</TableCell>
                         <TableCell>{apt.time}</TableCell>
                         <TableCell>{getDoctorName(apt.doctor_id)}</TableCell>
                         <TableCell>
@@ -148,7 +148,7 @@ export function PatientDashboard({ patientId }: PatientDashboardProps) {
                 {patientFinancials.map((rec) => (
                   <div key={rec.id} className="rounded-lg border p-3">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium">{format(new Date(rec.date), "dd/MM/yyyy")}</p>
+                      <p className="font-medium">{formatDateBR(rec.date)}</p>
                       <Badge
                         variant={
                           rec.status === "pago"
@@ -185,7 +185,7 @@ export function PatientDashboard({ patientId }: PatientDashboardProps) {
                   <TableBody>
                     {patientFinancials.map((rec) => (
                       <TableRow key={rec.id}>
-                        <TableCell>{format(new Date(rec.date), "dd/MM/yyyy")}</TableCell>
+                        <TableCell>{formatDateBR(rec.date)}</TableCell>
                         <TableCell>{rec.description}</TableCell>
                         <TableCell>
                           {rec.type === "receita" ? "+" : "-"}{" "}

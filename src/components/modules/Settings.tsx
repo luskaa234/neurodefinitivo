@@ -13,6 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { DEFAULT_SETTINGS, applySettingsToDocument, loadStoredSettings, saveSettings, type AppSettings } from '@/lib/appSettings';
+import { formatDateTimeBR, nowLocal } from '@/utils/date';
 
 const cnpjSchema = z
   .string()
@@ -166,7 +167,7 @@ export function SystemSettings() {
     try {
       setIsTestingWhatsApp(true);
       
-      const testMessage = `🧪 TESTE DO SISTEMA NEURO INTEGRAR 🧪\n\nEste é um teste do sistema de WhatsApp.\n\nNúmero da clínica: ${watchWhatsApp || '98974003414'}\nData/Hora: ${new Date().toLocaleString('pt-BR')}\n\n✅ Sistema funcionando corretamente!`;
+      const testMessage = `🧪 TESTE DO SISTEMA NEURO INTEGRAR 🧪\n\nEste é um teste do sistema de WhatsApp.\n\nNúmero da clínica: ${watchWhatsApp || '98974003414'}\nData/Hora: ${formatDateTimeBR(nowLocal())}\n\n✅ Sistema funcionando corretamente!`;
       
       // Abrir WhatsApp com mensagem de teste
       const whatsappUrl = `https://api.whatsapp.com/send?phone=55${watchWhatsApp || '98974003414'}&text=${encodeURIComponent(testMessage)}`;

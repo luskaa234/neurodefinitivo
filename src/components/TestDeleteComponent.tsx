@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
+import { formatDateBR } from '@/utils/date';
 import { Trash2, RefreshCw, Database } from 'lucide-react';
 
 export function TestDeleteComponent() {
@@ -47,7 +48,7 @@ export function TestDeleteComponent() {
 
     const appointmentToDelete = appointments[appointments.length - 1]; // Pegar a última consulta
     
-    if (window.confirm(`TESTE: Excluir permanentemente a consulta de ${new Date(appointmentToDelete.date).toLocaleDateString('pt-BR')}?`)) {
+    if (window.confirm(`TESTE: Excluir permanentemente a consulta de ${formatDateBR(appointmentToDelete.date)}?`)) {
       console.log('🧪 TESTE: Excluindo consulta:', appointmentToDelete.id);
       
       const success = await deleteAppointment(appointmentToDelete.id);

@@ -18,6 +18,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from '@/utils/date';
 
 const justificationSchema = z.object({
   appointment_id: z.string().min(1, 'Consulta é obrigatória'),
@@ -147,17 +148,14 @@ export function DoctorConsultations() {
     apt.doctor_id === user?.id || (apt.doctor_ids || []).includes(user?.id || "")
   );
   
-  const today = new Date();
-  const todayAppointments = myAppointments.filter(apt => 
-    new Date(apt.date).toDateString() === today.toDateString()
+  const today = nowLocal();
+  const todayDateStr = toInputDate(today);
+  const todayAppointments = myAppointments.filter(
+    (apt) => apt.date === todayDateStr
   );
 
-  const upcomingAppointments = myAppointments.filter(apt => 
-    new Date(apt.date) > today && apt.status !== 'cancelado'
-  );
-
-  const pastAppointments = myAppointments.filter(apt => 
-    new Date(apt.date) < today
+  const upcomingAppointments = myAppointments.filter(
+    (apt) => apt.date > todayDateStr && apt.status !== "cancelado"
   );
 
   const getPatientName = (patientId: string) => {
@@ -182,7 +180,7 @@ export function DoctorConsultations() {
       return;
     }
     const patientName = getPatientName(appointment.patient_id);
-    const dateTime = `${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}`;
+    const dateTime = `${formatDateBR(appointment.date)} às ${appointment.time}`;
     const message = `Olá ${patientName}, sua consulta em ${dateTime} foi cancelada pelo médico (falta justificada).`;
     window.open(
       `https://api.whatsapp.com/send?phone=${patientPhone}&text=${encodeURIComponent(message)}`,
@@ -223,7 +221,7 @@ export function DoctorConsultations() {
             doctor_id: appointment.doctor_id,
             patient_name: getPatientName(appointment.patient_id),
             doctor_name: user?.name || 'Médico',
-            date: new Date(appointment.date).toLocaleDateString('pt-BR'),
+            date: formatDateBR(appointment.date),
             time: appointment.time,
             reason: data.reason,
             created_at: new Date().toISOString(),
@@ -286,7 +284,7 @@ export function DoctorConsultations() {
                       .filter(apt => apt.status === 'confirmado' || apt.status === 'pendente')
                       .map((appointment) => (
                       <SelectItem key={appointment.id} value={appointment.id}>
-                        {getPatientName(appointment.patient_id)} - {new Date(appointment.date).toLocaleDateString('pt-BR')} às {appointment.time}
+                        {getPatientName(appointment.patient_id)} - {formatDateBR(appointment.date)} às {appointment.time}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -334,7 +332,7 @@ export function DoctorConsultations() {
                 <Input
                   id="date"
                   type="date"
-                  defaultValue={new Date().toISOString().split('T')[0]}
+                  defaultValue={toInputDate(nowLocal())}
                   {...register('date')}
                 />
                 {errors.date && (
@@ -374,7 +372,7 @@ export function DoctorConsultations() {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold capitalize">{note.type}</span>
                     <span className="text-xs text-gray-500">
-                      {new Date(note.created_at).toLocaleString('pt-BR')}
+                      {formatDateTimeBR(note.created_at)}
                     </span>
                   </div>
                   <p className="mt-2 text-gray-700">{note.message}</p>
@@ -447,7 +445,6 @@ export function DoctorConsultations() {
         <TabsList>
           <TabsTrigger value="today">📅 Hoje ({todayAppointments.length})</TabsTrigger>
           <TabsTrigger value="upcoming">🔮 Próximas ({upcomingAppointments.length})</TabsTrigger>
-          <TabsTrigger value="past">📜 Histórico ({pastAppointments.length})</TabsTrigger>
           <TabsTrigger value="justifications">⚠️ Justificativas ({justifications.length})</TabsTrigger>
         </TabsList>
 
@@ -545,7 +542,7 @@ export function DoctorConsultations() {
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                     .map((appointment) => (
                     <TableRow key={appointment.id}>
-                      <TableCell>{new Date(appointment.date).toLocaleDateString('pt-BR')}</TableCell>
+                      <TableCell>{formatDateBR(appointment.date)}</TableCell>
                       <TableCell className="font-bold text-blue-600">{appointment.time}</TableCell>
                       <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
                       <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
@@ -565,71 +562,6 @@ export function DoctorConsultations() {
               {upcomingAppointments.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   🔮 Nenhuma consulta futura agendada
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="past">
-          <Card>
-            <CardHeader>
-              <CardTitle>📜 Histórico de Consultas</CardTitle>
-              <CardDescription>
-                Suas consultas anteriores
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Horário</TableHead>
-                    <TableHead>Paciente</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Observações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pastAppointments
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .slice(0, 20)
-                    .map((appointment) => {
-                      const justification = getJustificationForAppointment(appointment.id);
-                      
-                      return (
-                        <TableRow key={appointment.id}>
-                          <TableCell>{new Date(appointment.date).toLocaleDateString('pt-BR')}</TableCell>
-                          <TableCell className="font-bold">{appointment.time}</TableCell>
-                          <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
-                          <TableCell>{appointment.type}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              appointment.status === 'realizado' ? 'default' :
-                              appointment.status === 'cancelado' ? 'destructive' : 'secondary'
-                            }>
-                              {appointment.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-xs">
-                            {justification ? (
-                              <div className="text-xs">
-                                <p className="font-medium text-yellow-600">Falta Justificada</p>
-                                <p className="text-gray-600">{justification.reason}</p>
-                              </div>
-                            ) : (
-                              <span className="text-gray-500">{appointment.notes || '-'}</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-              {pastAppointments.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  📜 Nenhuma consulta anterior
                 </div>
               )}
             </CardContent>
@@ -666,7 +598,7 @@ export function DoctorConsultations() {
                         <TableRow key={justification.id}>
                           <TableCell>
                             {appointment 
-                              ? `${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}`
+                              ? `${formatDateBR(appointment.date)} às ${appointment.time}`
                               : 'Consulta não encontrada'
                             }
                           </TableCell>
@@ -682,7 +614,7 @@ export function DoctorConsultations() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {new Date(justification.created_at).toLocaleDateString('pt-BR')}
+                            {formatDateBR(justification.created_at)}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button

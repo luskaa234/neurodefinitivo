@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
+import { formatDateBR, nowLocal } from '@/utils/date';
 
 // ❌ REMOVIDO o import circular de AgendamentoDashboard
 
@@ -41,37 +42,38 @@ export function AgendamentoDashboard() {
   const [pendingDate, setPendingDate] = useState('');
   const [pendingType, setPendingType] = useState('');
 
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const thisWeek = new Date(today);
-  thisWeek.setDate(thisWeek.getDate() + 7);
+  const today = nowLocal();
+  const todayDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const tomorrowDate = new Date(today);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowDateStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, "0")}-${String(tomorrowDate.getDate()).padStart(2, "0")}`;
+  const thisWeekDate = new Date(today);
+  thisWeekDate.setDate(thisWeekDate.getDate() + 7);
+  const thisWeekDateStr = `${thisWeekDate.getFullYear()}-${String(thisWeekDate.getMonth() + 1).padStart(2, "0")}-${String(thisWeekDate.getDate()).padStart(2, "0")}`;
 
   // Métricas específicas para agendamento
-  const todayAppointments = appointments.filter(apt => 
-    new Date(apt.date).toDateString() === today.toDateString()
+  const todayAppointments = appointments.filter(
+    (apt) => apt.date === todayDateStr
   );
 
-  const tomorrowAppointments = appointments.filter(apt => 
-    new Date(apt.date).toDateString() === tomorrow.toDateString()
+  const tomorrowAppointments = appointments.filter(
+    (apt) => apt.date === tomorrowDateStr
   );
 
-  const thisWeekAppointments = appointments.filter(apt => {
-    const aptDate = new Date(apt.date);
-    return aptDate >= today && aptDate <= thisWeek;
-  });
+  const thisWeekAppointments = appointments.filter(
+    (apt) => apt.date >= todayDateStr && apt.date <= thisWeekDateStr
+  );
 
   const pendingConfirmations = appointments.filter(apt => apt.status ===  'pendente');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmado');
-  const canceledToday = appointments.filter(apt => 
-    apt.status === 'cancelado' && 
-    new Date(apt.date).toDateString() === today.toDateString()
+  const canceledToday = appointments.filter(
+    (apt) => apt.status === "cancelado" && apt.date === todayDateStr
   );
 
   // Próximos agendamentos que precisam de atenção
   const upcomingAppointments = appointments
-    .filter(apt => new Date(apt.date) >= today && apt.status !== 'cancelado')
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .filter((apt) => apt.status !== "cancelado" && apt.date >= todayDateStr)
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
 
   const getPatientName = (patientId: string) => {
@@ -100,7 +102,7 @@ export function AgendamentoDashboard() {
       doctorName.includes(query) ||
       patientPhone.includes(query);
 
-    const appointmentDate = new Date(appointment.date).toISOString().slice(0, 10);
+    const appointmentDate = appointment.date;
     const matchesDate = pendingDate.length === 0 || appointmentDate === pendingDate;
 
     const typeText = String(appointment.type || '').toLowerCase();
@@ -147,7 +149,7 @@ export function AgendamentoDashboard() {
       return;
     }
 
-    const finalMessage = message || `Olá ${patient.name}! Sua consulta com ${doctor.name} está confirmada para ${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}. Neuro Integrar.`;
+    const finalMessage = message || `Olá ${patient.name}! Sua consulta com ${doctor.name} está confirmada para ${formatDateBR(appointment.date)} às ${appointment.time}. Neuro Integrar.`;
     const whatsappUrl = `https://contate.me/5598984692267?text=${encodeURIComponent(finalMessage)}`;
     
     window.open(whatsappUrl, '_blank');
@@ -159,7 +161,7 @@ export function AgendamentoDashboard() {
     const patient = patients.find(p => p.id === appointment.patient_id);
     const doctor = doctors.find(d => d.id === appointment.doctor_id);
     
-    const defaultMessage = `Olá ${patient?.name}! Sua consulta com ${doctor?.name} está confirmada para ${new Date(appointment.date).toLocaleDateString('pt-BR')} às ${appointment.time}. Neuro Integrar.`;
+    const defaultMessage = `Olá ${patient?.name}! Sua consulta com ${doctor?.name} está confirmada para ${formatDateBR(appointment.date)} às ${appointment.time}. Neuro Integrar.`;
     setCustomMessage(defaultMessage);
     setIsMessageDialogOpen(true);
   };
@@ -207,7 +209,7 @@ export function AgendamentoDashboard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
-            Hoje: {today.toLocaleDateString('pt-BR')}
+            Hoje: {formatDateBR(today)}
           </div>
           <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
             Pendentes: {pendingConfirmations.length}
@@ -305,7 +307,7 @@ export function AgendamentoDashboard() {
                       {getDoctorName(appointment.doctor_id)}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {new Date(appointment.date).toLocaleDateString('pt-BR')} às {appointment.time}
+                      {formatDateBR(appointment.date)} às {appointment.time}
                     </p>
                   </div>
                   <div className="flex space-x-2">
@@ -438,7 +440,7 @@ export function AgendamentoDashboard() {
                                   <TableCell>
                                     <div>
                                       <p className="font-medium">
-                                        {new Date(appointment.date).toLocaleDateString('pt-BR')}
+                                        {formatDateBR(appointment.date)}
                                       </p>
                                       <p className="text-sm text-gray-500">{appointment.time}</p>
                                     </div>
@@ -644,7 +646,7 @@ export function AgendamentoDashboard() {
                 <h4 className="font-medium mb-2">Detalhes da Consulta:</h4>
                 <p><strong>Paciente:</strong> {getPatientName(selectedAppointment.patient_id)}</p>
                 <p><strong>Médico:</strong> {getDoctorName(selectedAppointment.doctor_id)}</p>
-                <p><strong>Data:</strong> {new Date(selectedAppointment.date).toLocaleDateString('pt-BR')} às {selectedAppointment.time}</p>
+                <p><strong>Data:</strong> {formatDateBR(selectedAppointment.date)} às {selectedAppointment.time}</p>
                 <p><strong>Tipo:</strong> {selectedAppointment.type}</p>
                 <p><strong>Telefone:</strong> {getPatientPhone(selectedAppointment.patient_id)}</p>
               </div>

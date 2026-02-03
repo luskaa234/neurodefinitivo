@@ -40,6 +40,7 @@ import {
 import { useApp } from "@/contexts/AppContext";
 import { supabase } from "@/lib/supabase";
 import { loadStoredSettings } from "@/lib/appSettings";
+import { formatDateLongBR, formatMonthBR } from "@/utils/date";
 
 /* ======================================================
    TIPOS
@@ -1068,11 +1069,7 @@ export default function ExcelScheduleGrid() {
             <div className="flex flex-col">
               <span className="text-xs text-gray-500">Resumo do dia</span>
               <span className="text-sm font-semibold text-gray-900">
-                {new Date(`${summaryDate}T00:00:00`).toLocaleDateString("pt-BR", {
-                  weekday: "long",
-                  day: "2-digit",
-                  month: "long",
-                })}
+                {formatDateLongBR(summaryDate)}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
@@ -1097,11 +1094,9 @@ export default function ExcelScheduleGrid() {
               </Button>
             </div>
             <div className="text-sm font-semibold text-gray-800">
-              {`${pad2(weekOfMonth(currentWeekStart))}-SEMANA DE ${new Date(
+              {`${pad2(weekOfMonth(currentWeekStart))}-SEMANA DE ${formatMonthBR(
                 currentWeekStart
-              )
-                .toLocaleDateString("pt-BR", { month: "long" })
-                .toUpperCase()} DE ${currentWeekStart.getFullYear()}`}
+              ).toUpperCase()} DE ${currentWeekStart.getFullYear()}`}
             </div>
             <div className="min-w-[220px]">
               <Select value={selectedDoctorId} onValueChange={setSelectedDoctorId}>

@@ -18,6 +18,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { formatDateBR } from '@/utils/date';
 
 const evaluationSchema = z.object({
   medical_record_id: z.string().min(1, 'Prontuário é obrigatório'),
@@ -248,7 +249,7 @@ export function Evaluations() {
                   <SelectContent>
                     {medicalRecords.map((record) => (
                       <SelectItem key={record.id} value={record.id}>
-                        {getPatientName(record.id)} - {new Date(record.date).toLocaleDateString('pt-BR')}
+                        {getPatientName(record.id)} - {formatDateBR(record.date)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -438,7 +439,7 @@ export function Evaluations() {
                       <p className="font-medium text-sm">{getPatientName(evaluation.medical_record_id)}</p>
                       <p className="text-xs text-gray-600">{evaluation.type}</p>
                       <p className="text-xs text-gray-500">
-                        {new Date(evaluation.date).toLocaleDateString('pt-BR')}
+                        {formatDateBR(evaluation.date)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -493,7 +494,7 @@ export function Evaluations() {
                 return (
                   <TableRow key={evaluation.id}>
                     <TableCell>
-                      {new Date(evaluation.date).toLocaleDateString('pt-BR')}
+                      {formatDateBR(evaluation.date)}
                     </TableCell>
                     <TableCell className="font-medium">
                       {getPatientName(evaluation.medical_record_id)}
@@ -556,7 +557,7 @@ export function Evaluations() {
                 </div>
                 <div>
                   <Label>Data</Label>
-                  <p className="font-medium">{new Date(selectedEvaluation.date).toLocaleDateString('pt-BR')}</p>
+                  <p className="font-medium">{formatDateBR(selectedEvaluation.date)}</p>
                 </div>
               </div>
 

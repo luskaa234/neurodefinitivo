@@ -23,6 +23,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
+import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from '@/utils/date';
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -91,7 +92,26 @@ export function Dashboard() {
     }
   };
 
-  const today = new Date();
+  const today = nowLocal();
+  const todayDateStr = toInputDate(today);
+  const toDateKey = (value?: string) => {
+    if (!value) return null;
+    const base = value.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+      const [y, m, d] = base.split("-").map(Number);
+      return y * 10000 + m * 100 + d;
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(base)) {
+      const [d, m, y] = base.split("/").map(Number);
+      return y * 10000 + m * 100 + d;
+    }
+    if (/^\d{4}\/\d{2}\/\d{2}$/.test(base)) {
+      const [y, m, d] = base.split("/").map(Number);
+      return y * 10000 + m * 100 + d;
+    }
+    return null;
+  };
+  const todayKey = toDateKey(todayDateStr);
   const baseAppointments = Array.isArray(appointments)
     ? appointments.filter((apt) => {
         if (user?.role !== 'medico') return true;
@@ -100,7 +120,10 @@ export function Dashboard() {
     : [];
 
   const todayAppointments = baseAppointments.filter(
-    (apt) => new Date(apt.date).toDateString() === today.toDateString()
+    (apt) => apt.date === todayDateStr
+  );
+  const todayConfirmedAppointments = todayAppointments.filter(
+    (apt) => apt.status === "confirmado"
   );
 
   const thisMonthRevenue = Array.isArray(financialRecords)
@@ -113,7 +136,11 @@ export function Dashboard() {
         .reduce((sum, record) => sum + record.amount, 0)
     : 0;
 
-  const pendingAppointments = baseAppointments.filter(apt => apt.status === "pendente");
+  const pendingAppointments = baseAppointments.filter((apt) => {
+    if (apt.status !== "pendente") return false;
+    const aptKey = toDateKey(apt.date);
+    return aptKey !== null && todayKey !== null ? aptKey >= todayKey : false;
+  });
 
   
   const confirmedAppointments = baseAppointments.filter(apt => apt.status === 'confirmado').length;
@@ -126,14 +153,21 @@ export function Dashboard() {
     : [];
 
   const upcomingAppointments = dashboardAppointments
-    .filter(apt => new Date(`${apt.date}T${apt.time || '00:00'}`) >= today && apt.status !== 'cancelado')
-    .sort((a, b) => new Date(`${a.date}T${a.time || '00:00'}`).getTime() - new Date(`${b.date}T${b.time || '00:00'}`).getTime())
+    .filter((apt) => {
+      if (apt.status === "cancelado") return false;
+      const aptKey = toDateKey(apt.date);
+      return aptKey !== null && todayKey !== null ? aptKey >= todayKey : false;
+    })
+    .sort(
+      (a, b) =>
+        new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
+        new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+    )
     .slice(0, 6);
-
-  const recentAppointments = dashboardAppointments
-    .slice()
-    .sort((a, b) => new Date(`${b.date}T${b.time || '00:00'}`).getTime() - new Date(`${a.date}T${a.time || '00:00'}`).getTime())
-    .slice(0, 5);
+  const upcomingAppointmentsFiltered = upcomingAppointments.filter((apt) => {
+    const aptKey = toDateKey(apt.date);
+    return aptKey !== null && todayKey !== null ? aptKey >= todayKey : false;
+  });
 
   const getWelcomeMessage = () => {
     const hour = new Date().getHours();
@@ -157,7 +191,7 @@ export function Dashboard() {
     const query = pendingSearch.trim().toLowerCase();
     const matchesQuery = query.length === 0 || patientName.includes(query) || doctorName.includes(query);
 
-    const appointmentDate = new Date(appointment.date).toISOString().slice(0, 10);
+    const appointmentDate = appointment.date;
     const matchesDate = pendingDate.length === 0 || appointmentDate === pendingDate;
 
     const typeText = String(appointment.type || '').toLowerCase();
@@ -433,7 +467,7 @@ export function Dashboard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary sm:text-xs">
-            Hoje: {today.toLocaleDateString('pt-BR')}
+            Hoje: {formatDateBR(today)}
           </div>
           <div className="rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-[11px] font-semibold text-yellow-700 sm:text-xs">
             Pendentes: {pendingAppointments.length}
@@ -482,7 +516,7 @@ export function Dashboard() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold capitalize">{note.type}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(note.created_at).toLocaleString('pt-BR')}
+                        {formatDateTimeBR(note.created_at)}
                       </span>
                     </div>
                     <p className="mt-2 text-gray-700">{note.message}</p>
@@ -522,7 +556,7 @@ export function Dashboard() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">{note.patient_name} × {note.doctor_name}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(note.created_at).toLocaleString('pt-BR')}
+                        {formatDateTimeBR(note.created_at)}
                       </span>
                     </div>
                     <p className="mt-2 text-gray-700">
@@ -536,36 +570,55 @@ export function Dashboard() {
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Próximas Consultas</CardTitle>
-            <CardDescription>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+        <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-white via-white to-purple-50/40 shadow-sm">
+          <CardHeader className="border-b border-slate-100">
+            <CardTitle className="text-lg text-slate-900">Próximas Consultas</CardTitle>
+            <CardDescription className="text-slate-500">
               Próximos agendamentos a partir de hoje
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {upcomingAppointments.map((appointment) => (
-                <div key={appointment.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
-                  <div>
-                    <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(appointment.date).toLocaleDateString('pt-BR')} às {appointment.time}
+          <CardContent className="bg-white/60">
+            <div className="space-y-4">
+              {upcomingAppointmentsFiltered.map((appointment) => (
+                <div
+                  key={appointment.id}
+                  className="group relative flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_12px_26px_-18px_rgba(124,58,237,0.6)]"
+                >
+                  <div className="absolute left-0 top-4 h-10 w-1.5 rounded-full bg-purple-500/70" />
+                  <div className="pl-3">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {getPatientName(appointment.patient_id)}
                     </p>
-                    <p className="text-xs text-gray-400">{appointment.type}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                        {formatDateBR(appointment.date)} às {appointment.time}
+                      </span>
+                      {appointment.type && (
+                        <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700">
+                          {appointment.type}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <Badge variant={
-                    appointment.status === 'confirmado' ? 'default' :
-                    appointment.status === 'realizado' ? 'secondary' :
-                    appointment.status === 'cancelado' ? 'destructive' : 'outline'
-                  }>
+                  <Badge
+                    variant={
+                      appointment.status === 'confirmado'
+                        ? 'default'
+                        : appointment.status === 'realizado'
+                          ? 'secondary'
+                          : appointment.status === 'cancelado'
+                            ? 'destructive'
+                            : 'outline'
+                    }
+                    className="capitalize shadow-sm"
+                  >
                     {appointment.status}
                   </Badge>
                 </div>
               ))}
-              {upcomingAppointments.length === 0 && (
-                <p className="text-gray-500 text-center py-4">
+              {upcomingAppointmentsFiltered.length === 0 && (
+                <p className="text-slate-500 text-center py-4">
                   Nenhuma consulta próxima
                 </p>
               )}
@@ -573,61 +626,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Consultas Recentes</CardTitle>
-            <CardDescription>
-              Últimos agendamentos realizados
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recentAppointments.map((appointment) => {
-                const patient = Array.isArray(patients) 
-                  ? patients.find(p => p.id === appointment.patient_id)
-                  : null;
-                
-                return (
-                  <div key={appointment.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div>
-                      <p className="font-medium">{patient?.name || 'Paciente não encontrado'}</p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(appointment.date).toLocaleDateString('pt-BR')} às {appointment.time}
-                      </p>
-                      <p className="text-xs text-gray-400">{appointment.type}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant={
-                        appointment.status === 'confirmado' ? 'default' :
-                        appointment.status === 'realizado' ? 'secondary' :
-                        appointment.status === 'cancelado' ? 'destructive' : 'outline'
-                      }>
-                        {appointment.status}
-                      </Badge>
-                      {appointment.status === 'pendente' && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 border-green-200 text-green-700 hover:bg-green-50"
-                          onClick={() => handleConfirmAppointment(appointment.id)}
-                          aria-label="Confirmar consulta"
-                          title="Confirmar consulta"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {recentAppointments.length === 0 && (
-                <p className="text-gray-500 text-center py-4">
-                  Nenhuma consulta encontrada
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader>
@@ -713,7 +711,7 @@ export function Dashboard() {
                                   <TableCell>
                                     <div>
                                       <p className="font-medium">
-                                        {new Date(appointment.date).toLocaleDateString('pt-BR')}
+                                        {formatDateBR(appointment.date)}
                                       </p>
                                       <p className="text-sm text-gray-500">{appointment.time}</p>
                                     </div>
@@ -784,47 +782,85 @@ export function Dashboard() {
 
       {/* Seção específica para médicos */}
       {user?.role === 'medico' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Minha Agenda de Hoje</CardTitle>
-            <CardDescription>
-              Suas consultas programadas para hoje
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {appointments
-                .filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString())
-                .sort((a, b) => a.time.localeCompare(b.time))
-                .map((appointment) => (
-                <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="text-center">
-                      <p className="font-bold text-lg text-purple-600">{appointment.time}</p>
-                      <p className="text-xs text-gray-500">{appointment.type}</p>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Minha Agenda de Hoje</CardTitle>
+              <CardDescription>
+                Suas consultas programadas para hoje
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {appointments
+                  .filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString())
+                  .sort((a, b) => a.time.localeCompare(b.time))
+                  .map((appointment) => (
+                  <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="text-center">
+                        <p className="font-bold text-lg text-purple-600">{appointment.time}</p>
+                        <p className="text-xs text-gray-500">{appointment.type}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
+                        <p className="text-sm text-gray-600">R$ {appointment.price.toLocaleString('pt-BR')}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
-                      <p className="text-sm text-gray-600">R$ {appointment.price.toLocaleString('pt-BR')}</p>
-                    </div>
+                    <Badge variant={
+                      appointment.status === 'confirmado' ? 'default' :
+                      appointment.status === 'pendente' ? 'secondary' :
+                      appointment.status === 'realizado' ? 'outline' : 'destructive'
+                    }>
+                      {appointment.status}
+                    </Badge>
                   </div>
-                  <Badge variant={
-                    appointment.status === 'confirmado' ? 'default' :
-                    appointment.status === 'pendente' ? 'secondary' :
-                    appointment.status === 'realizado' ? 'outline' : 'destructive'
-                  }>
-                    {appointment.status}
-                  </Badge>
-                </div>
-              ))}
-              {appointments.filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString()).length === 0 && (
-                <p className="text-gray-500 text-center py-8">
-                  Nenhuma consulta agendada para hoje
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                {appointments.filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString()).length === 0 && (
+                  <p className="text-gray-500 text-center py-8">
+                    Nenhuma consulta agendada para hoje
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Confirmados Hoje</CardTitle>
+              <CardDescription>
+                Apenas consultas confirmadas para hoje
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {todayConfirmedAppointments
+                  .slice()
+                  .sort((a, b) => a.time.localeCompare(b.time))
+                  .map((appointment) => (
+                    <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div className="text-center">
+                          <p className="font-bold text-lg text-green-600">{appointment.time}</p>
+                          <p className="text-xs text-gray-500">{appointment.type}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
+                          <p className="text-sm text-gray-600">R$ {appointment.price.toLocaleString('pt-BR')}</p>
+                        </div>
+                      </div>
+                      <Badge variant="default">confirmado</Badge>
+                    </div>
+                  ))}
+                {todayConfirmedAppointments.length === 0 && (
+                  <p className="text-gray-500 text-center py-8">
+                    Nenhuma consulta confirmada para hoje
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

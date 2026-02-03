@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { toast } from "sonner";
+import { formatDateTimeBR } from "@/utils/date";
 
 /* UI */
 import {
@@ -367,7 +368,7 @@ Qualquer dúvida estamos à disposição.
             <TableBody>
               {history.map((m) => (
                 <TableRow key={m.id}>
-                  <TableCell>{new Date(m.date).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell>{formatDateTimeBR(m.date)}</TableCell>
                   <TableCell>{m.patient}</TableCell>
                   <TableCell className="truncate max-w-md">{m.message}</TableCell>
                   <TableCell>

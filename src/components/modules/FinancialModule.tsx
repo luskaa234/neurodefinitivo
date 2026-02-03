@@ -58,6 +58,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from "@/utils/date";
 
 /* =========================
    Tipos / Schema / Helpers
@@ -237,7 +238,7 @@ export function FinancialModule() {
   } = useForm<FinancialFormData>({
     resolver: zodResolver(financialSchema),
     defaultValues: {
-      date: new Date().toISOString().split("T")[0],
+      date: toInputDate(nowLocal()),
     },
   });
 
@@ -315,10 +316,7 @@ export function FinancialModule() {
         .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
         .map((a) => ({
           value: a.id,
-          label: `${new Date(a.date + "T" + a.time).toLocaleString("pt-BR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          })} — ${getNomePaciente(a.patient_id)} • ${getNomeMedico(
+          label: `${formatDateTimeBR(`${a.date}T${a.time}`)} — ${getNomePaciente(a.patient_id)} • ${getNomeMedico(
             a.doctor_id
           )} • ${a.type}`,
         })),
@@ -511,7 +509,7 @@ const success = await addFinancialRecord(payload);
 • Tipo: ${record.type === "receita" ? "💰 Receita" : "💸 Despesa"}
 • Valor: ${formatCurrency(record.amount)}
 • Descrição: ${record.description}
-• Data: ${new Date(record.date).toLocaleDateString("pt-BR")}
+• Data: ${formatDateBR(record.date)}
 
 ⚠️ ESTA AÇÃO NÃO PODE SER DESFEITA!`;
 
@@ -661,7 +659,7 @@ const success = await addFinancialRecord(payload);
                     <Input
                       id="date"
                       type="date"
-                      defaultValue={new Date().toISOString().split("T")[0]}
+                      defaultValue={toInputDate(nowLocal())}
                       {...register("date")}
                     />
                     {errors.date && (
@@ -1099,9 +1097,7 @@ const success = await addFinancialRecord(payload);
                       key={record.id}
                       className="hover:bg-gray-50/80 transition-colors"
                     >
-                      <TableCell>
-                        {new Date(record.date).toLocaleDateString("pt-BR")}
-                      </TableCell>
+                      <TableCell>{formatDateBR(record.date)}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -1269,7 +1265,7 @@ const success = await addFinancialRecord(payload);
                     .map((record) => (
                       <TableRow key={record.id}>
                         <TableCell>
-                          {new Date(record.date).toLocaleDateString("pt-BR")}
+                          {formatDateBR(record.date)}
                         </TableCell>
                         <TableCell>
                           <Badge

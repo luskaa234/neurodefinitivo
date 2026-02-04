@@ -64,6 +64,8 @@ type AptLike = {
   status: DBStatus | string;
   notes?: string;
   is_fixed?: boolean;
+  is_virtual?: boolean;
+  recurrence_source_id?: string;
 
 };
 
@@ -462,6 +464,20 @@ export default function ExcelScheduleGrid() {
     if (!appointmentId) return;
     const apt = (appointments as unknown as AptLike[]).find((a) => a.id === appointmentId);
     if (apt) {
+      if (apt.is_virtual && apt.recurrence_source_id) {
+        const base = (appointments as unknown as AptLike[]).find(
+          (a) => a.id === apt.recurrence_source_id
+        );
+        if (base) {
+          toast.info("Agendamento recorrente: editando o original.");
+          openEdit(base);
+        } else {
+          toast.error(
+            "Agendamento recorrente: original não encontrado para edição."
+          );
+        }
+        return;
+      }
       openEdit(apt);
     }
   };

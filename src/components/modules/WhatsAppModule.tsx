@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { toast } from "sonner";
-import { formatDateTimeBR } from "@/utils/date";
+import { formatDateBR, formatDateTimeBR } from "@/utils/date";
 
 /* UI */
 import {
@@ -144,6 +144,17 @@ export function WhatsAppModule() {
     apt: any,
     type: TemplateType
   ) => {
+    if (type === "confirm") {
+      const serviceLabel = apt.type ? `com ${apt.type}` : "com consulta";
+      return `
+Olá, bom dia, tudo bem?
+${patientName} você tem consulta agendada para o dia ${formatDateBR(
+        apt.date
+      )}, às ${apt.time}, ${serviceLabel} (${doctorsText}).
+Posso confirmar a presença hoje?
+`.trim();
+    }
+
     const statusText: Record<TemplateType, string> = {
       confirm: "está confirmada",
       reminder: "está agendada",

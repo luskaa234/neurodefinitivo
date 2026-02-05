@@ -477,20 +477,6 @@ export default function ExcelScheduleGrid() {
     if (!appointmentId) return;
     const apt = (appointments as unknown as AptLike[]).find((a) => a.id === appointmentId);
     if (apt) {
-      if (apt.is_virtual && apt.recurrence_source_id) {
-        const base = (appointments as unknown as AptLike[]).find(
-          (a) => a.id === apt.recurrence_source_id
-        );
-        if (base) {
-          toast.info("Agendamento recorrente: editando o original.");
-          openEdit(base);
-        } else {
-          toast.error(
-            "Agendamento recorrente: original não encontrado para edição."
-          );
-        }
-        return;
-      }
       openEdit(apt);
     }
   };
@@ -521,7 +507,16 @@ export default function ExcelScheduleGrid() {
       return;
     }
 
-    const nextStatus = isReschedule ? "agendado" : form.status;
+    const isVirtualSelected =
+      editing &&
+      selected &&
+      (selected.is_virtual || String(selected.id || "").includes("::"));
+
+    const nextStatus = isVirtualSelected
+      ? form.status
+      : isReschedule
+        ? "agendado"
+        : form.status;
 
     // PRINCIPAL = primeiro selecionado (obrigatório no banco)
     const payload = {
@@ -540,7 +535,9 @@ export default function ExcelScheduleGrid() {
 
     const ok =
       editing && selected
-        ? await updateAppointment(selected.id, payload as any)
+        ? isVirtualSelected
+          ? await addAppointment(payload as any)
+          : await updateAppointment(selected.id, payload as any)
         : await addAppointment(payload as any);
 
     if (ok) {
@@ -698,7 +695,23 @@ export default function ExcelScheduleGrid() {
     if (!selected) return;
     if (!confirm("Excluir este agendamento?")) return;
 
-    const ok = await deleteAppointment(selected.id);
+    const isVirtualSelected =
+      selected.is_virtual || String(selected.id || "").includes("::");
+    const ok = isVirtualSelected
+      ? await addAppointment({
+          patient_id: selected.patient_id,
+          patient_ids: getAllPatients(selected),
+          doctor_id: selected.doctor_id,
+          doctor_ids: getAllDoctors(selected),
+          date: selected.date,
+          time: normalizeTime(selected.time),
+          type: selected.type,
+          price: Number(selected.price) || 0,
+          notes: selected.notes,
+          status: "cancelado",
+          is_fixed: false,
+        } as any)
+      : await deleteAppointment(selected.id);
     if (ok) {
       toast.success("Agendamento excluído");
       closePanel();
@@ -946,6 +959,9 @@ export default function ExcelScheduleGrid() {
   useEffect(() => {
     if (dedupeRunningRef.current) return;
     if (!appointments || (appointments as unknown as AptLike[]).length === 0) return;
+    if (typeof window !== "undefined" && localStorage.getItem("dedupe-scan-done") === "1") {
+      return;
+    }
 
     const baseAppointments = (appointments as unknown as AptLike[]).filter(
       (apt) => !apt.is_virtual && !String(apt.id || "").includes("::")
@@ -960,7 +976,12 @@ export default function ExcelScheduleGrid() {
     });
 
     const duplicates = Array.from(groups.values()).filter((list) => list.length > 1);
-    if (duplicates.length === 0) return;
+    if (duplicates.length === 0) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("dedupe-scan-done", "1");
+      }
+      return;
+    }
 
     const runDedupe = async () => {
       dedupeRunningRef.current = true;
@@ -988,6 +1009,9 @@ export default function ExcelScheduleGrid() {
         }
 
         await reloadAll();
+        if (typeof window !== "undefined") {
+          localStorage.setItem("dedupe-scan-done", "1");
+        }
         toast.success(`Duplicados removidos: ${idsToDelete.length}.`);
       } catch (error) {
         console.error(error);

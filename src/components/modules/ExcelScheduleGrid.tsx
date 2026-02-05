@@ -697,21 +697,17 @@ export default function ExcelScheduleGrid() {
 
     const isVirtualSelected =
       selected.is_virtual || String(selected.id || "").includes("::");
-    const ok = isVirtualSelected
-      ? await addAppointment({
-          patient_id: selected.patient_id,
-          patient_ids: getAllPatients(selected),
-          doctor_id: selected.doctor_id,
-          doctor_ids: getAllDoctors(selected),
-          date: selected.date,
-          time: normalizeTime(selected.time),
-          type: selected.type,
-          price: Number(selected.price) || 0,
-          notes: selected.notes,
-          status: "cancelado",
-          is_fixed: false,
-        } as any)
-      : await deleteAppointment(selected.id);
+
+    let ok = false;
+    if (isVirtualSelected && selected.recurrence_source_id) {
+      const confirmAll = confirm(
+        "Este é um agendamento fixo. Deseja excluir TODAS as ocorrências?"
+      );
+      if (!confirmAll) return;
+      ok = await deleteAppointment(selected.recurrence_source_id);
+    } else {
+      ok = await deleteAppointment(selected.id);
+    }
     if (ok) {
       toast.success("Agendamento excluído");
       closePanel();

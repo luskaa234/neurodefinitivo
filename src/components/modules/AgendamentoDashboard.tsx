@@ -149,7 +149,12 @@ export function AgendamentoDashboard() {
       return;
     }
 
-    const finalMessage = message || `Olá ${patient.name}! Sua consulta com ${doctor.name} está confirmada para ${formatDateBR(appointment.date)} às ${appointment.time}. Neuro Integrar.`;
+    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com consulta";
+    const finalMessage =
+      message ||
+      `Olá, bom dia, tudo bem?\n${patient.name} você tem consulta agendada para o dia ${formatDateBR(
+        appointment.date
+      )}, às ${appointment.time}, ${serviceLabel} (${doctor.name}).\nPosso confirmar a presença hoje?`;
     const whatsappUrl = `https://contate.me/5598984692267?text=${encodeURIComponent(finalMessage)}`;
     
     window.open(whatsappUrl, '_blank');
@@ -161,7 +166,10 @@ export function AgendamentoDashboard() {
     const patient = patients.find(p => p.id === appointment.patient_id);
     const doctor = doctors.find(d => d.id === appointment.doctor_id);
     
-    const defaultMessage = `Olá ${patient?.name}! Sua consulta com ${doctor?.name} está confirmada para ${formatDateBR(appointment.date)} às ${appointment.time}. Neuro Integrar.`;
+    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com consulta";
+    const defaultMessage = `Olá, bom dia, tudo bem?\n${patient?.name} você tem consulta agendada para o dia ${formatDateBR(
+      appointment.date
+    )}, às ${appointment.time}, ${serviceLabel} (${doctor?.name}).\nPosso confirmar a presença hoje?`;
     setCustomMessage(defaultMessage);
     setIsMessageDialogOpen(true);
   };
@@ -183,7 +191,10 @@ export function AgendamentoDashboard() {
         const doctor = doctors.find(d => d.id === appointment.doctor_id);
         
         if (patient && doctor) {
-          const message = `Olá ${patient.name}! Lembramos que você tem consulta amanhã com ${doctor.name} às ${appointment.time}. Neuro Integrar.`;
+        const serviceLabel = appointment.type ? `com ${appointment.type}` : "com consulta";
+        const message = `Olá, bom dia, tudo bem?\n${patient.name} você tem consulta agendada para o dia ${formatDateBR(
+          appointment.date
+        )}, às ${appointment.time}, ${serviceLabel} (${doctor.name}).\nEsse é um lembrete da sua consulta.\nPosso confirmar a presença hoje?`;
           const whatsappUrl = `https://contate.me/5598984692267?text=${encodeURIComponent(message)}`;
           
           window.open(whatsappUrl, '_blank');

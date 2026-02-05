@@ -144,40 +144,31 @@ export function WhatsAppModule() {
     apt: any,
     type: TemplateType
   ) => {
+    const serviceLabel = apt.type ? `com ${apt.type}` : "com consulta";
+    const dateLabel = formatDateBR(apt.date);
+    const base = `Olá, bom dia, tudo bem?\n${patientName} você tem consulta agendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+
     if (type === "confirm") {
-      const serviceLabel = apt.type ? `com ${apt.type}` : "com consulta";
-      return `
-Olá, bom dia, tudo bem?
-${patientName} você tem consulta agendada para o dia ${formatDateBR(
-        apt.date
-      )}, às ${apt.time}, ${serviceLabel} (${doctorsText}).
-Posso confirmar a presença hoje?
-`.trim();
+      return `${base}\nPosso confirmar a presença hoje?`;
     }
 
-    const statusText: Record<TemplateType, string> = {
-      confirm: "está confirmada",
-      reminder: "está agendada",
-      cancel: "foi cancelada",
-      reschedule: "foi reagendada",
-    };
+    if (type === "reminder") {
+      return `${base}\nEsse é um lembrete da sua consulta.\nPosso confirmar a presença hoje?`;
+    }
+
+    if (type === "cancel") {
+      return `Olá, bom dia, tudo bem?\n${patientName} sua consulta agendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}) foi cancelada.`;
+    }
+
+    if (type === "reschedule") {
+      return `Olá, bom dia, tudo bem?\n${patientName} sua consulta foi reagendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+    }
 
     const together =
       others.length > 0
         ? `, que será realizada juntamente com ${joinNames(others)}`
         : "";
-
-    return `
-Olá ${patientName},
-
-sua consulta${together} com ${doctorsText}
-${statusText[type]} para:
-
-Data: ${apt.date}
-Horário: ${apt.time}
-
-Qualquer dúvida estamos à disposição.
-`.trim();
+    return `${base}${together}`;
   };
 
   /* ======================================================

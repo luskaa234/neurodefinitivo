@@ -558,11 +558,9 @@ export default function ExcelScheduleGrid() {
     const patientNames = form.patient_ids.map(getPaciente).join(", ");
     const doctorNames = form.doctor_ids.map(getMedico).join(", ");
     const dateTime = formatDateTime(form.date, form.time);
-    const statusLabel = isReschedule
-      ? "reagendado"
-      : form.status === "agendado"
-        ? "pendente"
-        : form.status;
+    const dateLabel = formatDateOnly(form.date);
+    const timeLabel = normalizeTime(form.time);
+    const serviceLabel = form.type ? `com ${form.type}` : "com consulta";
 
     if (target === "patient") {
       const id = patientId || form.patient_ids[0];
@@ -600,9 +598,32 @@ export default function ExcelScheduleGrid() {
         return `Olá ${getPaciente(id)}, você terá consulta em ${formatDateOnly(form.date)}: ${list}.`;
       }
 
-      return `Olá ${patientNames}, seu agendamento com ${doctorNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
+      if (form.status === "cancelado") {
+        return `Olá, bom dia, tudo bem?\n${getPaciente(
+          id
+        )} sua consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelada.`;
+      }
+
+      if (isReschedule) {
+        return `Olá, bom dia, tudo bem?\n${getPaciente(
+          id
+        )} sua consulta foi reagendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).`;
+      }
+
+      return `Olá, bom dia, tudo bem?\n${getPaciente(
+        id
+      )} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presença hoje?`;
     }
-    return `Olá ${doctorNames}, agendamento com ${patientNames} está ${statusLabel}. Data/Hora: ${dateTime}.`;
+
+    if (form.status === "cancelado") {
+      return `Olá, bom dia, tudo bem?\n${doctorNames} a consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}) foi cancelada.`;
+    }
+
+    if (isReschedule) {
+      return `Olá, bom dia, tudo bem?\n${doctorNames} a consulta foi reagendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
+    }
+
+    return `Olá, bom dia, tudo bem?\n${doctorNames} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
   };
 
   const sendWhatsApp = (target: "patient" | "doctor" | "all") => {

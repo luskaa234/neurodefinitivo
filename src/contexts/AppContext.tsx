@@ -55,6 +55,9 @@ export interface Appointment {
   notes?: string | null;
   price: number;
   created_at: string;
+  is_fixed?: boolean;
+  is_virtual?: boolean;
+  recurrence_source_id?: string;
 }
 
 export interface AppointmentRecurrence {
@@ -415,6 +418,74 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  const RECURRING_END_DATE = "2026-12-31";
+
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+
+  const toDateOnly = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const parseDate = (value?: string) => {
+    if (!value) return null;
+    const [y, m, d] = value.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+
+  const formatDate = (d: Date) =>
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+  const addDays = (d: Date, days: number) => {
+    const next = new Date(d);
+    next.setDate(next.getDate() + days);
+    return next;
+  };
+
+  const makeAppointmentKey = (apt: Appointment, dateOverride?: string) =>
+    `${dateOverride ?? apt.date}|${apt.time}|${apt.doctor_id}|${apt.patient_id}`;
+
+  const expandWeeklyAppointments = (base: Appointment[]) => {
+    const today = toDateOnly(new Date());
+    const fixedEnd = parseDate(RECURRING_END_DATE);
+    const horizon = fixedEnd && fixedEnd > today ? fixedEnd : addDays(today, 7);
+    const existingKeys = new Set(base.map((apt) => makeAppointmentKey(apt)));
+    const expanded: Appointment[] = [...base];
+
+    base.forEach((apt) => {
+      if (apt.status === "cancelado") return;
+      if (apt.is_fixed === false) return;
+
+      const baseDate = parseDate(apt.date);
+      if (!baseDate) return;
+
+      let next = baseDate < today ? baseDate : addDays(baseDate, 7);
+      while (next < today) next = addDays(next, 7);
+
+      for (; next <= horizon; next = addDays(next, 7)) {
+        const nextDate = formatDate(next);
+        const key = makeAppointmentKey(apt, nextDate);
+        if (existingKeys.has(key)) continue;
+
+        existingKeys.add(key);
+        expanded.push({
+          ...apt,
+          id: `${apt.id}::${nextDate}`,
+          date: nextDate,
+          status: "confirmado",
+          is_virtual: true,
+          recurrence_source_id: apt.id,
+          is_fixed: true,
+        });
+      }
+    });
+
+    return expanded.sort(
+      (a, b) =>
+        new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
+        new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+    );
+  };
+
   /* ======================================================
      LOAD ALL (FONTE ÚNICA)
 ====================================================== */
@@ -452,7 +523,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (recRes.error) throw recRes.error;
 
       setUsers(usersRes.data ?? []);
-      setAppointments((aptRes.data ?? []).map(normalizeAppointment));
+      const baseAppointments = (aptRes.data ?? []).map(normalizeAppointment);
+      setAppointments(expandWeeklyAppointments(baseAppointments));
       setFinancialRecords(finRes.data ?? []);
       setMedicalRecords(medRes.data ?? []);
       setRecurrences(recRes.data ?? []);
@@ -480,9 +552,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (cachedRaw) {
             const cached = JSON.parse(cachedRaw);
             setUsers(cached.users ?? []);
-            setAppointments(
-              (cached.appointments ?? []).map(normalizeAppointment)
+            const baseAppointments = (cached.appointments ?? []).map(
+              normalizeAppointment
             );
+            setAppointments(expandWeeklyAppointments(baseAppointments));
             setFinancialRecords(cached.financialRecords ?? []);
             setMedicalRecords(cached.medicalRecords ?? []);
             setRecurrences(cached.recurrences ?? []);
@@ -746,6 +819,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     data
   ) => {
     try {
+      const target = appointments.find((a) => a.id === id);
+      if (target?.is_virtual || id.includes("::")) {
+        toast.error(
+          "Este é um agendamento recorrente. Edite o agendamento original."
+        );
+        return false;
+      }
       const previous = appointments.find((a) => a.id === id) || null;
       const patientIds = data.patient_ids
         ? uniq(data.patient_ids)
@@ -847,6 +927,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAppointment = async (id: string) => {
     try {
+      const target = appointments.find((a) => a.id === id);
+      if (target?.is_virtual || id.includes("::")) {
+        toast.error(
+          "Este é um agendamento recorrente. Exclua o agendamento original."
+        );
+        return false;
+      }
       const previous = appointments.find((a) => a.id === id) || null;
       // apaga relações primeiro para não deixar lixo
       await supabase

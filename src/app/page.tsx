@@ -21,6 +21,7 @@ import { PatientDashboard } from "@/components/modules/PatientDashboard";
 import { PatientRecords } from "@/components/modules/PatientRecords";
 import { PatientFinance } from "@/components/modules/PatientFinance";
 import { PatientAppointments } from "@/components/modules/PatientAppointments";
+import { DoctorPatients } from "@/components/modules/DoctorPatients";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { formatDateFullBR, nowLocal } from "@/utils/date";
@@ -128,6 +129,8 @@ export default function Home() {
         return <DoctorConsultations />;
       case "justificar-falta":
         return <DoctorConsultations />;
+      case "meus-pacientes":
+        return <DoctorPatients />;
       case "teste-exclusoes":
         return <TestDeleteComponent />;
       default:

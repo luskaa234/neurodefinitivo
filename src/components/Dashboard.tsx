@@ -358,7 +358,8 @@ export function Dashboard() {
             icon: Users,
             color: 'text-purple-600',
             bgColor: 'bg-purple-50',
-            borderColor: 'border-purple-200'
+            borderColor: 'border-purple-200',
+            linkId: 'meus-pacientes'
           },
           {
             title: 'Consultas Hoje',
@@ -456,6 +457,63 @@ export function Dashboard() {
 
   const metrics = getMetricsForRole();
 
+  const upcomingCard = (
+    <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-white via-white to-purple-50/40 shadow-sm">
+      <CardHeader className="border-b border-slate-100">
+        <CardTitle className="text-lg text-slate-900">Próximas Consultas</CardTitle>
+        <CardDescription className="text-slate-500">
+          Próximos agendamentos a partir de hoje
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="bg-white/60">
+        <div className="space-y-4">
+          {upcomingAppointmentsFiltered.map((appointment) => (
+            <div
+              key={appointment.id}
+              className="group relative flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_12px_26px_-18px_rgba(124,58,237,0.6)]"
+            >
+              <div className="absolute left-0 top-4 h-10 w-1.5 rounded-full bg-purple-500/70" />
+              <div className="pl-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  {getPatientName(appointment.patient_id)}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    {formatDateBR(appointment.date)} às {appointment.time}
+                  </span>
+                  {appointment.type && (
+                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700">
+                      {appointment.type}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Badge
+                variant={
+                  appointment.status === 'confirmado'
+                    ? 'default'
+                    : appointment.status === 'realizado'
+                      ? 'secondary'
+                      : appointment.status === 'cancelado'
+                        ? 'destructive'
+                        : 'outline'
+                }
+                className="capitalize shadow-sm"
+              >
+                {appointment.status}
+              </Badge>
+            </div>
+          ))}
+          {upcomingAppointmentsFiltered.length === 0 && (
+            <p className="text-slate-500 text-center py-4">
+              Nenhuma consulta próxima
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="space-y-6 px-2 sm:px-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -479,63 +537,34 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {metrics.map((metric, index) => (
-          <Card key={index} className={`${metric.bgColor} ${metric.borderColor} border-2`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {metric.title}
-              </CardTitle>
-              <metric.icon className={`h-5 w-5 ${metric.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${metric.color}`}>{metric.value}</div>
-              <p className="text-xs text-muted-foreground">
-                {metric.description}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {metrics.map((metric, index) => {
+          const linkId = (metric as any).linkId as string | undefined;
+          return (
+            <Card
+              key={index}
+              className={`${metric.bgColor} ${metric.borderColor} border-2 ${linkId ? "cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md" : ""}`}
+              role={linkId ? "button" : undefined}
+              onClick={() => {
+                if (!linkId || typeof window === "undefined") return;
+                window.location.hash = `#${linkId}`;
+              }}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {metric.title}
+                </CardTitle>
+                <metric.icon className={`h-5 w-5 ${metric.color}`} />
+              </CardHeader>
+              <CardContent>
+                <div className={`text-2xl font-bold ${metric.color}`}>{metric.value}</div>
+                <p className="text-xs text-muted-foreground">
+                  {metric.description}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
-
-      {user?.role === 'medico' && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Notificações do WhatsApp</CardTitle>
-              <CardDescription>Atualizações recentes de agendamentos</CardDescription>
-            </div>
-            <Badge variant="secondary">{notifications.length}</Badge>
-          </CardHeader>
-          <CardContent>
-            {notifications.length === 0 ? (
-              <p className="text-sm text-gray-500">Nenhuma notificação recente.</p>
-            ) : (
-              <div className="space-y-3">
-                {notifications.slice(0, 4).map((note) => (
-                  <div key={note.id} className="rounded-lg border p-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold capitalize">{note.type}</span>
-                      <span className="text-xs text-gray-500">
-                        {formatDateTimeBR(note.created_at)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-gray-700">{note.message}</p>
-                    <div className="mt-3 flex justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => deleteDoctorNotification(note.id)}
-                      >
-                        Excluir
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {(user?.role === 'agendamento' || user?.role === 'admin') && (
         <Card>
@@ -570,62 +599,50 @@ export function Dashboard() {
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
-        <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-white via-white to-purple-50/40 shadow-sm">
-          <CardHeader className="border-b border-slate-100">
-            <CardTitle className="text-lg text-slate-900">Próximas Consultas</CardTitle>
-            <CardDescription className="text-slate-500">
-              Próximos agendamentos a partir de hoje
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="bg-white/60">
-            <div className="space-y-4">
-              {upcomingAppointmentsFiltered.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="group relative flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_12px_26px_-18px_rgba(124,58,237,0.6)]"
-                >
-                  <div className="absolute left-0 top-4 h-10 w-1.5 rounded-full bg-purple-500/70" />
-                  <div className="pl-3">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {getPatientName(appointment.patient_id)}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                        {formatDateBR(appointment.date)} às {appointment.time}
-                      </span>
-                      {appointment.type && (
-                        <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700">
-                          {appointment.type}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={
-                      appointment.status === 'confirmado'
-                        ? 'default'
-                        : appointment.status === 'realizado'
-                          ? 'secondary'
-                          : appointment.status === 'cancelado'
-                            ? 'destructive'
-                            : 'outline'
-                    }
-                    className="capitalize shadow-sm"
-                  >
-                    {appointment.status}
-                  </Badge>
-                </div>
-              ))}
-              {upcomingAppointmentsFiltered.length === 0 && (
-                <p className="text-slate-500 text-center py-4">
-                  Nenhuma consulta próxima
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      {user?.role === "medico" && upcomingCard}
 
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+        {user?.role !== "medico" && upcomingCard}
+
+        {user?.role === 'medico' && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Notificações do WhatsApp</CardTitle>
+                <CardDescription>Atualizações recentes de agendamentos</CardDescription>
+              </div>
+              <Badge variant="secondary">{notifications.length}</Badge>
+            </CardHeader>
+            <CardContent>
+              {notifications.length === 0 ? (
+                <p className="text-sm text-gray-500">Nenhuma notificação recente.</p>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.slice(0, 4).map((note) => (
+                    <div key={note.id} className="rounded-lg border p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold capitalize">{note.type}</span>
+                        <span className="text-xs text-gray-500">
+                          {formatDateTimeBR(note.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-gray-700">{note.message}</p>
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteDoctorNotification(note.id)}
+                        >
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

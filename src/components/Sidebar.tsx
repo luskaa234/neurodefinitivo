@@ -89,6 +89,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       case "medico":
         return [
           ...baseItems,
+          { id: "meus-pacientes", label: "Meus Pacientes", icon: Users },
           { id: "minhas-consultas", label: "Minhas Consultas", icon: CalendarCheck },
           { id: "justificar-falta", label: "Justificar Falta", icon: AlertTriangle },
           { id: "prontuarios", label: "Prontuários", icon: FileText },

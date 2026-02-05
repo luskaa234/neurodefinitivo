@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,6 @@ import {
   Check,
   Trash2,
   Pencil,
-  CalendarDays,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
@@ -107,8 +106,21 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 const toDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const toShortDate = (d: Date) =>
   `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
+const parseDateStr = (value?: string) => {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+};
 
 const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
+const chunkArray = <T,>(arr: T[], size: number) => {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
+  return out;
+};
 
 const isMedicoHorario = (value: any): value is MedicoHorario =>
   value &&
@@ -250,6 +262,7 @@ export default function ExcelScheduleGrid() {
     start: "08:00",
     end: "21:00",
   });
+  const dedupeRunningRef = useRef(false);
 
   // filtros
   const [search, setSearch] = useState("");
@@ -268,7 +281,7 @@ export default function ExcelScheduleGrid() {
     price: "",
     notes: "",
     status: "agendado",
-    is_fixed: false,
+    is_fixed: true,
   });
 
   /* ======================================================
@@ -437,7 +450,7 @@ export default function ExcelScheduleGrid() {
       price: "",
       notes: "",
       status: "agendado",
-      is_fixed: false,
+      is_fixed: true,
       ...prefill,
     });
     setPanelOpen(true);
@@ -681,10 +694,7 @@ export default function ExcelScheduleGrid() {
     setFilterDate("");
   };
 
-  const setToday = () => {
-    const today = new Date();
-    setFilterDate(toDateStr(today));
-  };
+  // removed export/hoje actions
 
   const createPendingDoctor = async () => {
     const name = quickDoctorName.trim();
@@ -912,6 +922,63 @@ export default function ExcelScheduleGrid() {
     loadSchedule();
   }, [selectedDoctorId]);
 
+  useEffect(() => {
+    if (dedupeRunningRef.current) return;
+    if (!appointments || (appointments as unknown as AptLike[]).length === 0) return;
+
+    const baseAppointments = (appointments as unknown as AptLike[]).filter(
+      (apt) => !apt.is_virtual && !String(apt.id || "").includes("::")
+    );
+
+    const groups = new Map<string, AptLike[]>();
+    baseAppointments.forEach((apt) => {
+      const key = `${apt.date}|${normalizeTime(apt.time)}|${apt.doctor_id}|${apt.patient_id}`;
+      const list = groups.get(key) || [];
+      list.push(apt);
+      groups.set(key, list);
+    });
+
+    const duplicates = Array.from(groups.values()).filter((list) => list.length > 1);
+    if (duplicates.length === 0) return;
+
+    const runDedupe = async () => {
+      dedupeRunningRef.current = true;
+      try {
+        const idsToDelete: string[] = [];
+        duplicates.forEach((list) => {
+          const sorted = list
+            .slice()
+            .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+          const [, ...rest] = sorted;
+          rest.forEach((apt) => idsToDelete.push(apt.id));
+        });
+
+        if (!idsToDelete.length) return;
+
+        for (const ids of chunkArray(idsToDelete, 500)) {
+          // eslint-disable-next-line no-await-in-loop
+          await supabase.from("appointment_patients").delete().in("appointment_id", ids);
+          // eslint-disable-next-line no-await-in-loop
+          await supabase.from("appointment_doctors").delete().in("appointment_id", ids);
+          // eslint-disable-next-line no-await-in-loop
+          await supabase.from("financial_records").delete().in("appointment_id", ids);
+          // eslint-disable-next-line no-await-in-loop
+          await supabase.from("appointments").delete().in("id", ids);
+        }
+
+        await reloadAll();
+        toast.success(`Duplicados removidos: ${idsToDelete.length}.`);
+      } catch (error) {
+        console.error(error);
+        toast.error("Erro ao remover agendamentos duplicados.");
+      } finally {
+        dedupeRunningRef.current = false;
+      }
+    };
+
+    runDedupe();
+  }, [appointments, reloadAll]);
+
 
   /* ======================================================
      UI
@@ -964,10 +1031,6 @@ export default function ExcelScheduleGrid() {
         <div className="flex flex-wrap items-center gap-2">
           <Button className="h-8 flex-1 bg-purple-600 hover:bg-purple-700" onClick={() => openNew()}>
             <Plus className="w-4 h-4 mr-1" /> Novo
-          </Button>
-          <Button variant="outline" className="h-8 px-2" onClick={setToday} title="Hoje">
-            <CalendarDays className="w-4 h-4 mr-1" />
-            Hoje
           </Button>
           <Button variant="outline" className="h-8 px-2" onClick={clearFilters} title="Limpar filtros">
             <RefreshCw className="w-4 h-4 mr-1" />

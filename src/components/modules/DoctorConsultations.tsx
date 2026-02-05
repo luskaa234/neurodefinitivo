@@ -441,10 +441,10 @@ export function DoctorConsultations() {
         </Card>
       </div>
 
-      <Tabs defaultValue="today" className="space-y-4">
+      <Tabs defaultValue="upcoming" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="today">📅 Hoje ({todayAppointments.length})</TabsTrigger>
           <TabsTrigger value="upcoming">🔮 Próximas ({upcomingAppointments.length})</TabsTrigger>
+          <TabsTrigger value="today">📅 Hoje ({todayAppointments.length})</TabsTrigger>
           <TabsTrigger value="justifications">⚠️ Justificativas ({justifications.length})</TabsTrigger>
         </TabsList>
 

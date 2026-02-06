@@ -690,6 +690,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (insErr) throw insErr;
   };
 
+  const isNonFatalRelationError = (err: any, table: string) => {
+    const code = err?.code;
+    const msg = String(err?.message || err || "").toLowerCase();
+    if (code === "42P01") return true; // relation does not exist
+    if (code === "42501") return true; // insufficient_privilege (RLS/permissions)
+    if (msg.includes("row level security") || msg.includes("row-level security")) return true;
+    if (msg.includes("permission denied")) return true;
+    if (msg.includes("relation") && msg.includes(table)) return true;
+    return false;
+  };
+
+  const trySyncAppointmentPatients = async (
+    appointmentId: string,
+    patientIds: string[]
+  ) => {
+    try {
+      await syncAppointmentPatients(appointmentId, patientIds);
+    } catch (err: any) {
+      if (isNonFatalRelationError(err, "appointment_patients")) {
+        console.warn("syncAppointmentPatients non-fatal:", err?.message || err);
+        return;
+      }
+      throw err;
+    }
+  };
+
+  const trySyncAppointmentDoctors = async (
+    appointmentId: string,
+    doctorIds: string[]
+  ) => {
+    try {
+      await syncAppointmentDoctors(appointmentId, doctorIds);
+    } catch (err: any) {
+      if (isNonFatalRelationError(err, "appointment_doctors")) {
+        console.warn("syncAppointmentDoctors non-fatal:", err?.message || err);
+        return;
+      }
+      throw err;
+    }
+  };
+
   /* ======================================================
      CRUD (COM MULTI RELAÇÕES)
 ====================================================== */
@@ -770,8 +811,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       // 🔥 salva relações (multi)
-      await syncAppointmentPatients(apt.id, patientIds);
-      await syncAppointmentDoctors(apt.id, doctorIds);
+      await trySyncAppointmentPatients(apt.id, patientIds);
+      await trySyncAppointmentDoctors(apt.id, doctorIds);
 
       await loadAll();
       const { doctorsList, doctorMessage } = buildAppointmentMessages({
@@ -849,8 +890,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 🔥 se vierem relações, sincroniza
-      if (patientIds) await syncAppointmentPatients(id, patientIds);
-      if (doctorIds) await syncAppointmentDoctors(id, doctorIds);
+      if (patientIds) await trySyncAppointmentPatients(id, patientIds);
+      if (doctorIds) await trySyncAppointmentDoctors(id, doctorIds);
 
       await loadAll();
       const effectivePatientIds =
@@ -919,14 +960,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const previous = appointments.find((a) => a.id === id) || null;
       // apaga relações primeiro para não deixar lixo
-      await supabase
+      const { error: delPatientsErr } = await supabase
         .from("appointment_patients")
         .delete()
         .eq("appointment_id", id);
-      await supabase
+      if (delPatientsErr) {
+        if (!isNonFatalRelationError(delPatientsErr, "appointment_patients")) {
+          throw delPatientsErr;
+        }
+        console.warn(
+          "delete appointment_patients non-fatal:",
+          delPatientsErr?.message || delPatientsErr
+        );
+      }
+
+      const { error: delDoctorsErr } = await supabase
         .from("appointment_doctors")
         .delete()
         .eq("appointment_id", id);
+      if (delDoctorsErr) {
+        if (!isNonFatalRelationError(delDoctorsErr, "appointment_doctors")) {
+          throw delDoctorsErr;
+        }
+        console.warn(
+          "delete appointment_doctors non-fatal:",
+          delDoctorsErr?.message || delDoctorsErr
+        );
+      }
 
       const { error } = await supabase.from("appointments").delete().eq("id", id);
       if (error) throw error;

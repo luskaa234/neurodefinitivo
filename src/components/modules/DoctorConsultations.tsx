@@ -468,7 +468,6 @@ export function DoctorConsultations() {
                     <TableHead>Paciente</TableHead>
                     <TableHead>Telefone</TableHead>
                     <TableHead>Tipo</TableHead>
-                    <TableHead>Valor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Ações</TableHead>
                   </TableRow>
@@ -482,9 +481,6 @@ export function DoctorConsultations() {
                       <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
                       <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
                       <TableCell>{appointment.type}</TableCell>
-                      <TableCell className="text-green-600 font-medium">
-                        R$ {appointment.price.toLocaleString('pt-BR')}
-                      </TableCell>
                       <TableCell>
                         <Badge variant={
                           appointment.status === 'confirmado' ? 'default' :

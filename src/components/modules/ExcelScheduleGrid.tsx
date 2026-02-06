@@ -360,12 +360,13 @@ export default function ExcelScheduleGrid() {
 
       if (filterPatient !== "all" && !getAllPatients(apt).includes(filterPatient)) return false;
       if (filterDoctor !== "all" && !getAllDoctors(apt).includes(filterDoctor)) return false;
+      if (selectedDoctorId !== "all" && !getAllDoctors(apt).includes(selectedDoctorId)) return false;
       if (filterStatus !== "all" && statusUI !== filterStatus) return false;
       if (filterDate && apt.date !== filterDate) return false;
 
       return true;
     });
-  }, [appointments, search, filterPatient, filterDoctor, filterStatus, filterDate]);
+  }, [appointments, search, filterPatient, filterDoctor, filterStatus, filterDate, selectedDoctorId]);
 
   const summaryDate = filterDate || toDateStr(currentWeekStart);
 
@@ -557,7 +558,7 @@ export default function ExcelScheduleGrid() {
     const dateTime = formatDateTime(form.date, form.time);
     const dateLabel = formatDateOnly(form.date);
     const timeLabel = normalizeTime(form.time);
-    const serviceLabel = form.type ? `com ${form.type}` : "com consulta";
+    const serviceLabel = form.type ? `com ${form.type}` : "com atendimento";
 
     if (target === "patient") {
       const id = patientId || form.patient_ids[0];
@@ -592,35 +593,35 @@ export default function ExcelScheduleGrid() {
         const list = sorted
           .map((a) => `${a.time} com ${a.doctorNames}${a.type ? ` - ${a.type}` : ""}`)
           .join("; ");
-        return `Olá ${getPaciente(id)}, você terá consulta em ${formatDateOnly(form.date)}: ${list}.`;
+        return `Olá ${getPaciente(id)}, você terá atendimento em ${formatDateOnly(form.date)}: ${list}.`;
       }
 
       if (form.status === "cancelado") {
         return `Olá, bom dia, tudo bem?\n${getPaciente(
           id
-        )} sua consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelada.`;
+        )} seu atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelado.`;
       }
 
       if (isReschedule) {
         return `Olá, bom dia, tudo bem?\n${getPaciente(
           id
-        )} sua consulta foi reagendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).`;
+        )} seu atendimento foi reagendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).`;
       }
 
       return `Olá, bom dia, tudo bem?\n${getPaciente(
         id
-      )} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presença hoje?`;
+      )} você tem atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presença hoje?`;
     }
 
     if (form.status === "cancelado") {
-      return `Olá, bom dia, tudo bem?\n${doctorNames} a consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}) foi cancelada.`;
+      return `Olá, bom dia, tudo bem?\n${doctorNames} o atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}) foi cancelado.`;
     }
 
     if (isReschedule) {
-      return `Olá, bom dia, tudo bem?\n${doctorNames} a consulta foi reagendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
+      return `Olá, bom dia, tudo bem?\n${doctorNames} o atendimento foi reagendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
     }
 
-    return `Olá, bom dia, tudo bem?\n${doctorNames} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
+    return `Olá, bom dia, tudo bem?\n${doctorNames} você tem atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
   };
 
   const sendWhatsApp = (target: "patient" | "doctor" | "all") => {

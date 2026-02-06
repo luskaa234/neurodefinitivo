@@ -144,24 +144,24 @@ export function WhatsAppModule() {
     apt: any,
     type: TemplateType
   ) => {
-    const serviceLabel = apt.type ? `com ${apt.type}` : "com consulta";
+    const serviceLabel = apt.type ? `com ${apt.type}` : "com atendimento";
     const dateLabel = formatDateBR(apt.date);
-    const base = `Olá, bom dia, tudo bem?\n${patientName} você tem consulta agendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+    const base = `Olá, bom dia, tudo bem?\n${patientName} você tem atendimento agendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
 
     if (type === "confirm") {
       return `${base}\nPosso confirmar a presença hoje?`;
     }
 
     if (type === "reminder") {
-      return `${base}\nEsse é um lembrete da sua consulta.\nPosso confirmar a presença hoje?`;
+      return `${base}\nEsse é um lembrete do seu atendimento.\nPosso confirmar a presença hoje?`;
     }
 
     if (type === "cancel") {
-      return `Olá, bom dia, tudo bem?\n${patientName} sua consulta agendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}) foi cancelada.`;
+      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento agendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}) foi cancelado.`;
     }
 
     if (type === "reschedule") {
-      return `Olá, bom dia, tudo bem?\n${patientName} sua consulta foi reagendada para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento foi reagendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
     }
 
     const together =

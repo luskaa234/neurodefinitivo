@@ -181,11 +181,11 @@ export function DoctorConsultations() {
     }
     const patientName = getPatientName(appointment.patient_id);
     const dateTime = `${formatDateBR(appointment.date)} às ${appointment.time}`;
-    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com consulta";
+    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com atendimento";
     const doctorName = user?.name || "médico";
-    const message = `Olá, bom dia, tudo bem?\n${patientName} sua consulta agendada para o dia ${formatDateBR(
+    const message = `Olá, bom dia, tudo bem?\n${patientName} seu atendimento agendado para o dia ${formatDateBR(
       appointment.date
-    )}, às ${appointment.time}, ${serviceLabel} (${doctorName}) foi cancelada pelo médico (falta justificada).`;
+    )}, às ${appointment.time}, ${serviceLabel} (${doctorName}) foi cancelado pelo médico (falta justificada).`;
     window.open(
       `https://api.whatsapp.com/send?phone=${patientPhone}&text=${encodeURIComponent(message)}`,
       '_blank'

@@ -284,14 +284,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const dateLabel = formatDateOnly(appointment.date);
     const timeLabel = normalizeTimeToHHMM(appointment.time);
-    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com consulta";
+    const serviceLabel = appointment.type ? `com ${appointment.type}` : "com atendimento";
 
     const patientMessageBase =
       type === "cancel"
-        ? `Olá, bom dia, tudo bem?\n${patientNames} sua consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelada.`
+        ? `Olá, bom dia, tudo bem?\n${patientNames} seu atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelado.`
         : type === "reschedule"
-          ? `Olá, bom dia, tudo bem?\n${patientNames} sua consulta foi reagendada de ${prevDateTime || dateTime} para ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).`
-          : `Olá, bom dia, tudo bem?\n${patientNames} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presença hoje?`;
+          ? `Olá, bom dia, tudo bem?\n${patientNames} seu atendimento foi reagendado de ${prevDateTime || dateTime} para ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).`
+          : `Olá, bom dia, tudo bem?\n${patientNames} você tem atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presença hoje?`;
 
     const patientSummaries = patientsList.map((p) => ({
       patientId: p.id,
@@ -300,10 +300,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const doctorMessage =
       type === "cancel"
-        ? `Olá, bom dia, tudo bem?\n${doctorNames} a consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}) foi cancelada.`
+        ? `Olá, bom dia, tudo bem?\n${doctorNames} o atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}) foi cancelado.`
         : type === "reschedule"
-          ? `Olá, bom dia, tudo bem?\n${doctorNames} a consulta foi reagendada de ${prevDateTime || dateTime} para ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`
-          : `Olá, bom dia, tudo bem?\n${doctorNames} você tem consulta agendada para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
+          ? `Olá, bom dia, tudo bem?\n${doctorNames} o atendimento foi reagendado de ${prevDateTime || dateTime} para ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`
+          : `Olá, bom dia, tudo bem?\n${doctorNames} você tem atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${patientNames}).`;
 
     return { patientsList, doctorsList, patientSummaries, doctorMessage };
   };

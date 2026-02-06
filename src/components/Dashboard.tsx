@@ -363,9 +363,7 @@ export function Dashboard() {
           },
           {
             title: 'Consultas Hoje',
-            value: doctorAppointments.filter(apt => 
-              new Date(apt.date).toDateString() === today.toDateString()
-            ).length.toString(),
+            value: doctorAppointments.filter((apt) => apt.date === todayDateStr).length.toString(),
             description: 'Suas consultas hoje',
             icon: Calendar,
             color: 'text-blue-600',
@@ -374,9 +372,11 @@ export function Dashboard() {
           },
           {
             title: 'Próximas Consultas',
-            value: doctorAppointments.filter(apt => 
-              new Date(apt.date) > today && apt.status !== 'cancelado'
-            ).length.toString(),
+            value: doctorAppointments.filter((apt) => {
+              if (apt.status === "cancelado") return false;
+              const aptKey = toDateKey(apt.date);
+              return aptKey !== null && todayKey !== null ? aptKey > todayKey : false;
+            }).length.toString(),
             description: 'Agendamentos futuros',
             icon: Clock,
             color: 'text-green-600',
@@ -402,9 +402,11 @@ export function Dashboard() {
         return [
           {
             title: 'Próxima Consulta',
-            value: patientAppointments.filter(apt => 
-              new Date(apt.date) > today && apt.status !== 'cancelado'
-            ).length > 0 ? '1' : '0',
+            value: patientAppointments.filter((apt) => {
+              if (apt.status === "cancelado") return false;
+              const aptKey = toDateKey(apt.date);
+              return aptKey !== null && todayKey !== null ? aptKey > todayKey : false;
+            }).length > 0 ? '1' : '0',
             description: 'Consultas agendadas',
             icon: Calendar,
             color: 'text-purple-600',
@@ -457,17 +459,24 @@ export function Dashboard() {
 
   const metrics = getMetricsForRole();
 
+  const isDoctor = user?.role === "medico";
+  const upcomingList = isDoctor ? todayAppointments : upcomingAppointmentsFiltered;
+  const upcomingTitle = isDoctor ? "Consultas de Hoje" : "Próximas Consultas";
+  const upcomingDescription = isDoctor
+    ? "Consultas programadas para hoje"
+    : "Próximos agendamentos a partir de hoje";
+
   const upcomingCard = (
     <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-white via-white to-purple-50/40 shadow-sm">
       <CardHeader className="border-b border-slate-100">
-        <CardTitle className="text-lg text-slate-900">Próximas Consultas</CardTitle>
+        <CardTitle className="text-lg text-slate-900">{upcomingTitle}</CardTitle>
         <CardDescription className="text-slate-500">
-          Próximos agendamentos a partir de hoje
+          {upcomingDescription}
         </CardDescription>
       </CardHeader>
       <CardContent className="bg-white/60">
         <div className="space-y-4">
-          {upcomingAppointmentsFiltered.map((appointment) => (
+          {upcomingList.map((appointment) => (
             <div
               key={appointment.id}
               className="group relative flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.6)] transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_12px_26px_-18px_rgba(124,58,237,0.6)]"
@@ -504,9 +513,9 @@ export function Dashboard() {
               </Badge>
             </div>
           ))}
-          {upcomingAppointmentsFiltered.length === 0 && (
+          {upcomingList.length === 0 && (
             <p className="text-slate-500 text-center py-4">
-              Nenhuma consulta próxima
+              {isDoctor ? "Nenhuma consulta agendada para hoje" : "Nenhuma consulta próxima"}
             </p>
           )}
         </div>
@@ -718,7 +727,7 @@ export function Dashboard() {
                                 <TableHead>Paciente</TableHead>
                                 <TableHead>Médico</TableHead>
                                 <TableHead>Tipo</TableHead>
-                                <TableHead>Valor</TableHead>
+                                {user?.role !== "medico" && <TableHead>Valor</TableHead>}
                                 <TableHead>Ações</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -740,9 +749,11 @@ export function Dashboard() {
                                     {getDoctorName(appointment.doctor_id)}
                                   </TableCell>
                                   <TableCell>{appointment.type}</TableCell>
-                                  <TableCell className="text-green-600 font-medium">
-                                    R$ {appointment.price.toLocaleString('pt-BR')}
-                                  </TableCell>
+                                  {user?.role !== "medico" && (
+                                    <TableCell className="text-green-600 font-medium">
+                                      R$ {appointment.price.toLocaleString('pt-BR')}
+                                    </TableCell>
+                                  )}
                                   <TableCell>
                                     <Button
                                       size="sm"
@@ -757,7 +768,7 @@ export function Dashboard() {
                               ))}
                               {filteredPendingAppointments.length === 0 && (
                                 <TableRow>
-                                  <TableCell colSpan={6} className="text-center text-sm text-gray-500">
+                                  <TableCell colSpan={user?.role !== "medico" ? 6 : 5} className="text-center text-sm text-gray-500">
                                     Nenhuma consulta encontrada com os filtros atuais
                                   </TableCell>
                                 </TableRow>
@@ -809,8 +820,8 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {appointments
-                  .filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString())
+                {todayAppointments
+                  .slice()
                   .sort((a, b) => a.time.localeCompare(b.time))
                   .map((appointment) => (
                   <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -821,7 +832,6 @@ export function Dashboard() {
                       </div>
                       <div>
                         <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
-                        <p className="text-sm text-gray-600">R$ {appointment.price.toLocaleString('pt-BR')}</p>
                       </div>
                     </div>
                     <Badge variant={
@@ -833,7 +843,7 @@ export function Dashboard() {
                     </Badge>
                   </div>
                 ))}
-                {appointments.filter(apt => (apt.doctor_id === user.id || (apt.doctor_ids || []).includes(user.id)) && new Date(apt.date).toDateString() === today.toDateString()).length === 0 && (
+                {todayAppointments.length === 0 && (
                   <p className="text-gray-500 text-center py-8">
                     Nenhuma consulta agendada para hoje
                   </p>
@@ -863,7 +873,6 @@ export function Dashboard() {
                         </div>
                         <div>
                           <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
-                          <p className="text-sm text-gray-600">R$ {appointment.price.toLocaleString('pt-BR')}</p>
                         </div>
                       </div>
                       <Badge variant="default">confirmado</Badge>

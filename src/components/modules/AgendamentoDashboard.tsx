@@ -241,9 +241,7 @@ export function AgendamentoDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{todayAppointments.length}</div>
             <p className="text-xs text-muted-foreground">
-              {confirmedAppointments.filter(apt => 
-                new Date(apt.date).toDateString() === today.toDateString()
-              ).length} confirmadas
+              {confirmedAppointments.filter((apt) => apt.date === todayDateStr).length} confirmadas
             </p>
           </CardContent>
         </Card>

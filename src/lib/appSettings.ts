@@ -5,6 +5,7 @@ export interface AppSettings {
   company_phone: string;
   company_email: string;
   whatsapp_number: string;
+  push_global_enabled?: boolean;
   site_name: string;
   site_short_name?: string;
   site_description?: string;
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   company_phone: "",
   company_email: "",
   whatsapp_number: "98974003414",
+  push_global_enabled: false,
   site_name: "Neuro Integrar",
   site_short_name: "Neuro Integrar",
   site_description: "Sistema completo para gestão de clínicas neurológicas",
@@ -57,6 +59,10 @@ const mergeSettings = (raw: Partial<AppSettings>): AppSettings => {
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
+    push_global_enabled:
+      typeof raw.push_global_enabled === "boolean"
+        ? raw.push_global_enabled
+        : DEFAULT_SETTINGS.push_global_enabled,
     logo_site_url: raw.logo_site_url || legacyLogo || DEFAULT_SETTINGS.logo_site_url,
     logo_pwa_url: raw.logo_pwa_url || legacyLogo || DEFAULT_SETTINGS.logo_pwa_url,
     brand_primary: normalizeColor(raw.brand_primary || "", DEFAULT_SETTINGS.brand_primary),

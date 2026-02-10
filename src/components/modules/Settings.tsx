@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Building, Phone, Globe, Palette, Save, Clock, CheckCircle, Image, FileText, Bell } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ const settingsSchema = z.object({
   company_phone: z.string().min(1, 'Telefone é obrigatório'),
   company_email: z.string().email('Email inválido'),
   whatsapp_number: z.string().min(10, 'WhatsApp deve ter pelo menos 10 dígitos'),
+  push_global_enabled: z.boolean().optional(),
   site_name: z.string().min(1, 'Nome do site é obrigatório'),
   site_short_name: z.string().optional().or(z.literal("")),
   site_description: z.string().optional().or(z.literal("")),
@@ -60,6 +62,7 @@ export function SystemSettings() {
   const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("default");
   const [pushEnabled, setPushEnabled] = useState(false);
   const [isPushLoading, setIsPushLoading] = useState(false);
+  const [pushGlobalEnabled, setPushGlobalEnabled] = useState(false);
 
   const {
     register,
@@ -112,6 +115,7 @@ export function SystemSettings() {
         brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
       };
       setSettings(normalized);
+      setPushGlobalEnabled(!!normalized.push_global_enabled);
 
       setValue('company_name', normalized.company_name);
       setValue('company_cnpj', normalized.company_cnpj || "");
@@ -119,6 +123,7 @@ export function SystemSettings() {
       setValue('company_phone', normalized.company_phone);
       setValue('company_email', normalized.company_email);
       setValue('whatsapp_number', normalized.whatsapp_number);
+      setValue('push_global_enabled', !!normalized.push_global_enabled);
       setValue('site_name', normalized.site_name);
       setValue('site_short_name', normalized.site_short_name || "");
       setValue('site_description', normalized.site_description || "");
@@ -184,6 +189,7 @@ export function SystemSettings() {
         company_phone: data.company_phone,
         company_email: data.company_email,
         whatsapp_number: data.whatsapp_number,
+        push_global_enabled: data.push_global_enabled ?? false,
         site_name: data.site_name,
         site_short_name: data.site_short_name || "",
         site_description: data.site_description || "",
@@ -221,6 +227,22 @@ export function SystemSettings() {
       console.error('Erro ao salvar configurações:', error);
       toast.error('❌ Erro ao salvar configurações');
     }
+  };
+
+  const handleGlobalPushToggle = (value: boolean) => {
+    const nextSettings: AppSettings = {
+      ...settings,
+      push_global_enabled: value,
+    };
+    setPushGlobalEnabled(value);
+    saveSettings(nextSettings);
+    setSettings(nextSettings);
+    window.dispatchEvent(new Event("app-settings-updated"));
+    toast.success(
+      value
+        ? "Notificações globais ativadas para todos."
+        : "Notificações globais desativadas."
+    );
   };
 
   const testWhatsApp = async () => {
@@ -302,7 +324,7 @@ export function SystemSettings() {
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList className="flex w-full flex-wrap gap-2 sm:gap-0">
+        <TabsList className="flex w-full flex-nowrap gap-2 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:gap-0">
           <TabsTrigger value="company">🏢 Empresa</TabsTrigger>
           <TabsTrigger value="schedule">⏰ Horários</TabsTrigger>
           <TabsTrigger value="whatsapp">📱 WhatsApp</TabsTrigger>
@@ -559,6 +581,23 @@ export function SystemSettings() {
                     Ativado: {pushEnabled ? "Sim" : "Não"}
                   </p>
                 </div>
+
+                {user?.role === "admin" && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-emerald-800">Ativar para todos</p>
+                        <p className="text-emerald-700">
+                          Quando ligado, o sistema solicita permissão de push para todos os usuários.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={pushGlobalEnabled}
+                        onCheckedChange={handleGlobalPushToggle}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <Button

@@ -25,6 +25,8 @@ import { DoctorPatients } from "@/components/modules/DoctorPatients";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { formatDateFullBR, nowLocal } from "@/utils/date";
+import { loadStoredSettings } from "@/lib/appSettings";
+import { isPushSupported, subscribeToPush } from "@/lib/push";
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -54,6 +56,25 @@ export default function Home() {
     window.addEventListener("hashchange", applyFromHash);
     return () => window.removeEventListener("hashchange", applyFromHash);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!user?.id) return;
+    if (!isPushSupported()) return;
+
+    const tryAutoSubscribe = () => {
+      const settings = loadStoredSettings();
+      if (!settings.push_global_enabled) return;
+      const key = `push-auto-requested:${user.id}`;
+      if (localStorage.getItem(key) === "1") return;
+      localStorage.setItem(key, "1");
+      subscribeToPush(user.id);
+    };
+
+    tryAutoSubscribe();
+    window.addEventListener("app-settings-updated", tryAutoSubscribe);
+    return () => window.removeEventListener("app-settings-updated", tryAutoSubscribe);
+  }, [user?.id]);
 
   if (isLoading) {
     return (

@@ -14,6 +14,9 @@ if (isProd) {
     reloadOnOnline: true,
     disable: false,
     customWorkerSrc: 'worker',
+    fallbacks: {
+      document: '/offline.html',
+    },
   });
 }
 

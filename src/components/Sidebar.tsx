@@ -131,7 +131,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       {!isMobile && (
         <div
           className={cn(
-            "hidden md:flex flex-col h-screen bg-sidebar border-r border-sidebar-border shadow-lg transition-all duration-300",
+            "hidden md:flex flex-col h-screen bg-sidebar/95 backdrop-blur-md border-r border-sidebar-border/80 shadow-xl transition-all duration-300",
             isCollapsed ? "w-20" : "w-64"
           )}
         >
@@ -162,7 +162,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             isOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <div className="w-72 bg-sidebar shadow-xl flex flex-col text-base animate-slide-in">
+          <div className="w-72 bg-sidebar/95 backdrop-blur-md shadow-xl flex flex-col text-base animate-slide-in">
             <Header collapsed={false} settings={appSettings} />
             <MenuList
               menuItems={menuItems}
@@ -217,7 +217,7 @@ function MenuList({
   collapsed: boolean;
 }) {
   return (
-    <ScrollArea className="flex-1 px-2 py-3">
+    <ScrollArea className="flex-1 px-3 py-3">
       <div className="space-y-1">
         {menuItems.map((item) => (
           <Button

@@ -87,7 +87,25 @@ export const subscribeToPush = async (userId?: string) => {
   const registration = await registerServiceWorker();
   if (!registration) return { ok: false, reason: "no_sw" };
   if (typeof navigator !== "undefined" && !navigator.serviceWorker.controller) {
-    return { ok: false, reason: "no_controller" };
+    try {
+      await withTimeout(
+        new Promise<void>((resolve) => {
+          const onChange = () => {
+            navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+            resolve();
+          };
+          navigator.serviceWorker.addEventListener("controllerchange", onChange);
+          registration.update?.();
+          setTimeout(() => {
+            navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+            resolve();
+          }, 2500);
+        }),
+        3000
+      );
+    } catch {
+      // continue and attempt subscribe anyway
+    }
   }
 
   let subscription: PushSubscription | null = null;

@@ -5,7 +5,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getCurrentSubscription, getPushPermission, isPushSupported, subscribeToPush } from "@/lib/push";
 import { loadStoredSettings } from "@/lib/appSettings";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 export default function NotificationNudge() {
@@ -15,7 +14,6 @@ export default function NotificationNudge() {
   const [hasSubscription, setHasSubscription] = useState(false);
   const [globalEnabled, setGlobalEnabled] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -62,7 +60,6 @@ export default function NotificationNudge() {
     if (!shouldPrompt || typeof window === "undefined" || !user?.id) return;
     const key = `push-entry-prompted:${user.id}`;
     if (localStorage.getItem(key) === "1") return;
-    setPromptOpen(true);
   }, [shouldPrompt, user?.id]);
 
   const enablePush = async () => {
@@ -76,7 +73,6 @@ export default function NotificationNudge() {
         setHasSubscription(!!sub);
         localStorage.setItem(`push-entry-prompted:${user.id}`, "1");
         toast.success("Notificações ativadas com sucesso.");
-        setPromptOpen(false);
         return;
       }
       if (res.reason === "denied") {
@@ -88,16 +84,7 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "timeout") {
-        if (user?.id) {
-          const key = `push-auto-reload:${user.id}`;
-          if (localStorage.getItem(key) !== "1") {
-            localStorage.setItem(key, "1");
-            toast.message("Atualizando o app para ativar as notificações...");
-            window.location.reload();
-            return;
-          }
-        }
-        toast.error("Tempo esgotado ao ativar. Recarregue o app e tente novamente.");
+        toast.error("Tempo esgotado ao ativar. Feche e abra o app novamente.");
         return;
       }
       if (res.reason === "network") {
@@ -109,15 +96,6 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "no_controller") {
-        if (user?.id) {
-          const key = `push-auto-reload:${user.id}`;
-          if (localStorage.getItem(key) !== "1") {
-            localStorage.setItem(key, "1");
-            toast.message("Atualizando o app para ativar as notificações...");
-            window.location.reload();
-            return;
-          }
-        }
         toast.error("O app precisa ser recarregado para ativar as notificações.");
         return;
       }
@@ -138,52 +116,24 @@ export default function NotificationNudge() {
 
   return (
     <>
-      {showBanner && <div className="h-12" aria-hidden />}
       {showBanner && (
-        <div className="fixed inset-x-0 top-0 z-50 border-b bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
-            <span className="font-medium text-gray-900">
-              Ative as notificações para receber avisos de novos atendimentos,
-              reagendamentos e cancelamentos.
-            </span>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={enablePush} disabled={isLoading}>
-                {isLoading ? "Ativando..." : "Ativar"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={dismissBanner}>
-                Agora não
-              </Button>
-            </div>
+        <div className="fixed bottom-4 right-4 z-50 w-[92vw] max-w-sm rounded-2xl border bg-white/95 p-4 shadow-xl backdrop-blur sm:w-full">
+          <div className="text-sm font-semibold text-gray-900">
+            Ativar notificações?
           </div>
-        </div>
-      )}
-
-      <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
-        <DialogContent className="w-[92vw] max-w-md sm:w-full">
-          <DialogHeader>
-            <DialogTitle>Ativar notificações?</DialogTitle>
-            <DialogDescription>
-              Receba avisos de novos atendimentos, reagendamentos e cancelamentos.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (user?.id) {
-                  localStorage.setItem(`push-entry-prompted:${user.id}`, "1");
-                }
-                setPromptOpen(false);
-              }}
-            >
+          <p className="mt-1 text-xs text-gray-600">
+            Receba avisos de novos atendimentos, reagendamentos e cancelamentos.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button size="sm" variant="ghost" onClick={dismissBanner}>
               Agora não
             </Button>
-            <Button onClick={enablePush} disabled={isLoading}>
+            <Button size="sm" onClick={enablePush} disabled={isLoading}>
               {isLoading ? "Ativando..." : "Ativar notificações"}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </>
   );
 }

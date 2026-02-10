@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { sendPushNotification } from "@/lib/push";
 
 /* ======================================================
    TIPOS (ALINHADOS AO BANCO REAL)
@@ -830,6 +831,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         patientIds,
         doctorIds,
       });
+      sendPushNotification({ type: "create", appointment: apt as Appointment });
       return true;
     } catch (err: any) {
       console.error("addAppointment:", err?.message || err);
@@ -930,6 +932,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         patientIds: effectivePatientIds.filter(Boolean),
         doctorIds: effectiveDoctorIds.filter(Boolean),
       });
+      sendPushNotification({ type, appointment: nextAppointment });
 
       const { doctorsList, doctorMessage } = buildAppointmentMessages({
         type,
@@ -1011,6 +1014,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           doctorIds: previous.doctor_ids ?? [previous.doctor_id],
         });
       }
+      sendPushNotification({ type: "delete", appointment: previous ?? undefined });
       return true;
     } catch (err: any) {
       console.error("deleteAppointment:", err?.message || err);

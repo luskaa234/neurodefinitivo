@@ -13,6 +13,7 @@ if (isProd) {
     skipWaiting: true,
     reloadOnOnline: true,
     disable: false,
+    customWorkerSrc: 'worker',
   });
 }
 

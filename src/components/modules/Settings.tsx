@@ -7,13 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building, Phone, Globe, Palette, Save, Clock, CheckCircle, Image, FileText } from 'lucide-react';
+import { Building, Phone, Globe, Palette, Save, Clock, CheckCircle, Image, FileText, Bell } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { DEFAULT_SETTINGS, applySettingsToDocument, loadStoredSettings, saveSettings, type AppSettings } from '@/lib/appSettings';
 import { formatDateTimeBR, nowLocal } from '@/utils/date';
+import { useAuth } from '@/contexts/AuthContext';
+import { getCurrentSubscription, getPushPermission, isPushSupported, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
 
 const cnpjSchema = z
   .string()
@@ -51,8 +53,13 @@ const settingsSchema = z.object({
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
 export function SystemSettings() {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isTestingWhatsApp, setIsTestingWhatsApp] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [isPushLoading, setIsPushLoading] = useState(false);
 
   const {
     register,
@@ -73,6 +80,22 @@ export function SystemSettings() {
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  useEffect(() => {
+    const refreshPush = async () => {
+      const supported = isPushSupported();
+      setPushSupported(supported);
+      if (!supported) {
+        setPushPermission("unsupported");
+        setPushEnabled(false);
+        return;
+      }
+      setPushPermission(getPushPermission() as NotificationPermission);
+      const sub = await getCurrentSubscription();
+      setPushEnabled(!!sub);
+    };
+    refreshPush();
   }, []);
 
   const loadSettings = () => {
@@ -112,6 +135,43 @@ export function SystemSettings() {
       applySettingsToDocument(normalized);
     } catch (error) {
       console.error('Erro ao carregar configurações:', error);
+    }
+  };
+
+  const handleEnablePush = async () => {
+    setIsPushLoading(true);
+    const result = await subscribeToPush(user?.id);
+    setPushPermission(getPushPermission() as NotificationPermission);
+    const sub = await getCurrentSubscription();
+    setPushEnabled(!!sub);
+    setIsPushLoading(false);
+
+    if (!result.ok) {
+      toast.error("Não foi possível ativar notificações.");
+      return;
+    }
+    toast.success("Notificações ativadas com sucesso.");
+  };
+
+  const handleDisablePush = async () => {
+    setIsPushLoading(true);
+    await unsubscribeFromPush();
+    const sub = await getCurrentSubscription();
+    setPushEnabled(!!sub);
+    setIsPushLoading(false);
+    toast.success("Notificações desativadas.");
+  };
+
+  const handleTestPush = async () => {
+    try {
+      await fetch("/api/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "test" }),
+      });
+      toast.success("Notificação de teste enviada.");
+    } catch {
+      toast.error("Falha ao enviar notificação de teste.");
     }
   };
 
@@ -246,6 +306,7 @@ export function SystemSettings() {
           <TabsTrigger value="company">🏢 Empresa</TabsTrigger>
           <TabsTrigger value="schedule">⏰ Horários</TabsTrigger>
           <TabsTrigger value="whatsapp">📱 WhatsApp</TabsTrigger>
+          <TabsTrigger value="notifications">🔔 Notificações</TabsTrigger>
           <TabsTrigger value="appearance">🎨 Aparência</TabsTrigger>
         </TabsList>
 
@@ -469,6 +530,69 @@ export function SystemSettings() {
                       <strong>💡 Dica:</strong> Clique em "Testar WhatsApp" para verificar se o número está funcionando corretamente
                     </p>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Bell className="mr-2 h-5 w-5" />
+                  🔔 Notificações Push
+                </CardTitle>
+                <CardDescription>
+                  Receba alertas fora do app no navegador e no celular
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border bg-slate-50 p-4 text-sm">
+                  <p className="font-semibold text-slate-800">Status</p>
+                  <p className="text-slate-600">
+                    Suporte: {pushSupported ? "Disponível" : "Indisponível"}
+                  </p>
+                  <p className="text-slate-600">
+                    Permissão: {pushPermission === "unsupported" ? "Não suportado" : pushPermission}
+                  </p>
+                  <p className="text-slate-600">
+                    Ativado: {pushEnabled ? "Sim" : "Não"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={handleEnablePush}
+                    disabled={!pushSupported || isPushLoading}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    Ativar notificações
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleDisablePush}
+                    disabled={!pushEnabled || isPushLoading}
+                  >
+                    Desativar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTestPush}
+                    disabled={!pushEnabled || isPushLoading}
+                  >
+                    Enviar teste
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="font-semibold">iOS (iPhone/iPad)</p>
+                  <p>
+                    Para receber notificações no iOS, instale o app na Tela de Início
+                    via Safari e permita notificações. Depois, ative aqui.
+                  </p>
                 </div>
               </CardContent>
             </Card>

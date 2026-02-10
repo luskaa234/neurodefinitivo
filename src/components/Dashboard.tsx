@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from '@/utils/date';
 
@@ -39,7 +40,23 @@ export function Dashboard() {
     message: string;
     created_at: string;
   }>>([]);
+  const [appNotifications, setAppNotifications] = useState<Array<{
+    id: string;
+    type: string;
+    message: string;
+    created_at: string;
+  }>>([]);
   const [schedulerNotifications, setSchedulerNotifications] = useState<any[]>([]);
+
+  const getPatientName = (patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    return patient ? patient.name : 'Paciente não encontrado';
+  };
+
+  const getDoctorName = (doctorId: string) => {
+    const doctor = doctors.find(d => d.id === doctorId);
+    return doctor ? doctor.name : 'Médico não encontrado';
+  };
 
   React.useEffect(() => {
     if (user?.role !== 'medico' || !user.id) return;
@@ -62,6 +79,25 @@ export function Dashboard() {
   }, [user?.role, user?.id]);
 
   React.useEffect(() => {
+    const loadAppNotifications = () => {
+      const raw = localStorage.getItem('app-notifications');
+      if (!raw) {
+        setAppNotifications([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        setAppNotifications(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setAppNotifications([]);
+      }
+    };
+    loadAppNotifications();
+    window.addEventListener('storage', loadAppNotifications);
+    return () => window.removeEventListener('storage', loadAppNotifications);
+  }, []);
+
+  React.useEffect(() => {
     if (user?.role !== 'agendamento' && user?.role !== 'admin') return;
     const loadSchedulerNotifications = () => {
       const raw = localStorage.getItem('scheduler-notifications');
@@ -77,6 +113,57 @@ export function Dashboard() {
     window.addEventListener('storage', loadSchedulerNotifications);
     return () => window.removeEventListener('storage', loadSchedulerNotifications);
   }, [user?.role]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("realtime-dashboard-notifications")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        (payload: any) => {
+          const apt = payload.new || payload.old;
+          if (!apt) return;
+
+          if (user.role === "medico" && apt.doctor_id !== user.id) return;
+
+          const dateLabel = apt.date ? formatDateBR(apt.date) : "data";
+          const timeLabel = apt.time ? ` às ${apt.time}` : "";
+          const patientName = apt.patient_id ? getPatientName(apt.patient_id) : "Paciente";
+          const doctorName = apt.doctor_id ? getDoctorName(apt.doctor_id) : "Médico";
+
+          let message = "";
+          if (payload.eventType === "INSERT") {
+            message = `Novo atendimento: ${patientName} com ${doctorName} em ${dateLabel}${timeLabel}.`;
+          } else if (payload.eventType === "UPDATE") {
+            message = `Atendimento atualizado: ${patientName} com ${doctorName} em ${dateLabel}${timeLabel}.`;
+          } else if (payload.eventType === "DELETE") {
+            message = `Atendimento removido: ${patientName} com ${doctorName} em ${dateLabel}${timeLabel}.`;
+          } else {
+            message = `Atualização de atendimento: ${patientName} com ${doctorName} em ${dateLabel}${timeLabel}.`;
+          }
+
+          const notice = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: payload.eventType || "UPDATE",
+            message,
+            created_at: new Date().toISOString(),
+          };
+
+          const raw = localStorage.getItem("app-notifications");
+          const list = raw ? JSON.parse(raw) : [];
+          const next = [notice, ...(Array.isArray(list) ? list : [])].slice(0, 50);
+          localStorage.setItem("app-notifications", JSON.stringify(next));
+          setAppNotifications(next);
+          toast(message);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, doctors, patients]);
 
   const deleteDoctorNotification = (notificationId: string) => {
     const raw = localStorage.getItem('whatsapp-notifications');
@@ -173,16 +260,6 @@ export function Dashboard() {
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
     return `${greeting}, ${user?.name || 'Usuário'}!`;
-  };
-
-  const getPatientName = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient ? patient.name : 'Paciente não encontrado';
-  };
-
-  const getDoctorName = (doctorId: string) => {
-    const doctor = doctors.find(d => d.id === doctorId);
-    return doctor ? doctor.name : 'Médico não encontrado';
   };
 
   const filteredPendingAppointments = pendingAppointments.filter((appointment) => {
@@ -652,6 +729,35 @@ export function Dashboard() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Notificações em Tempo Real</CardTitle>
+              <CardDescription>Alterações recentes no sistema</CardDescription>
+            </div>
+            <Badge variant="secondary">{appNotifications.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {appNotifications.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhuma notificação recente.</p>
+            ) : (
+              <div className="space-y-3">
+                {appNotifications.slice(0, 4).map((note) => (
+                  <div key={note.id} className="rounded-lg border p-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold capitalize">{note.type}</span>
+                      <span className="text-xs text-gray-500">
+                        {formatDateTimeBR(note.created_at)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-gray-700">{note.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

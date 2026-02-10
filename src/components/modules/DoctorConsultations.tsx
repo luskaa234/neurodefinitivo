@@ -61,6 +61,7 @@ export function DoctorConsultations() {
   const [isJustificationDialogOpen, setIsJustificationDialogOpen] = useState(false);
   const [justifications, setJustifications] = useState<Justification[]>([]);
   const [notifications, setNotifications] = useState<WhatsAppNotification[]>([]);
+  const [justificationSearch, setJustificationSearch] = useState("");
 
   const {
     register,
@@ -157,6 +158,18 @@ export function DoctorConsultations() {
   const upcomingAppointments = myAppointments.filter(
     (apt) => apt.date > todayDateStr && apt.status !== "cancelado"
   );
+
+  const filteredJustifications = justifications.filter((j) => {
+    if (!justificationSearch.trim()) return true;
+    const appointment = appointments.find((apt) => apt.id === j.appointment_id);
+    const patientName = appointment ? getPatientName(appointment.patient_id) : "";
+    const q = justificationSearch.trim().toLowerCase();
+    return (
+      patientName.toLowerCase().includes(q) ||
+      String(j.reason || "").toLowerCase().includes(q) ||
+      String(j.description || "").toLowerCase().includes(q)
+    );
+  });
 
   const getPatientName = (patientId: string) => {
     const patient = patients.find(p => p.id === patientId);
@@ -577,6 +590,13 @@ export function DoctorConsultations() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-4">
+                <Input
+                  placeholder="Pesquisar paciente, motivo ou descrição"
+                  value={justificationSearch}
+                  onChange={(e) => setJustificationSearch(e.target.value)}
+                />
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -589,7 +609,7 @@ export function DoctorConsultations() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {justifications
+                  {filteredJustifications
                     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                     .map((justification) => {
                       const appointment = appointments.find(apt => apt.id === justification.appointment_id);
@@ -630,9 +650,9 @@ export function DoctorConsultations() {
                     })}
                 </TableBody>
               </Table>
-              {justifications.length === 0 && (
+              {filteredJustifications.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  ⚠️ Nenhuma falta justificada
+                  ⚠️ Nenhuma falta justificada encontrada
                 </div>
               )}
             </CardContent>

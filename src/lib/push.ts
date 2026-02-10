@@ -32,20 +32,37 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
   }
 };
 
+const waitForActiveSW = async (registration: ServiceWorkerRegistration, ms = 12000) => {
+  if (registration.active) return registration;
+  const installing = registration.installing || registration.waiting;
+  if (!installing) {
+    return await withTimeout(navigator.serviceWorker.ready, ms);
+  }
+  return await withTimeout(
+    new Promise<ServiceWorkerRegistration>((resolve, reject) => {
+      const onState = () => {
+        if (installing.state === "activated") {
+          installing.removeEventListener("statechange", onState);
+          resolve(registration);
+        }
+      };
+      installing.addEventListener("statechange", onState);
+      setTimeout(() => {
+        installing.removeEventListener("statechange", onState);
+        reject(new Error("timeout"));
+      }, ms);
+    }),
+    ms
+  );
+};
+
 export const registerServiceWorker = async () => {
   if (!isPushSupported()) return null;
   try {
     const existing = await navigator.serviceWorker.getRegistration("/");
-    if (existing) return existing;
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    const registration = existing || (await navigator.serviceWorker.register("/sw.js"));
     try {
-      // não bloqueia em browsers que demoram para ativar
-      return await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<ServiceWorkerRegistration>((resolve) =>
-          setTimeout(() => resolve(registration), 1500)
-        ),
-      ]);
+      return await waitForActiveSW(registration, 12000);
     } catch {
       return registration;
     }

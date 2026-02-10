@@ -178,13 +178,33 @@ export function SystemSettings() {
     setIsPushLoading(false);
 
     if (!result.ok) {
-      const reason =
-        result.reason === "denied"
-          ? "Permissão negada no navegador."
-          : result.reason === "missing_vapid_public_key"
-            ? "Chave VAPID pública não configurada."
-            : "Não foi possível ativar notificações.";
-      toast.error(reason);
+      if (result.reason === "denied") {
+        toast.error("Permissão negada no navegador.");
+        return;
+      }
+      if (result.reason === "missing_vapid_public_key") {
+        toast.error("Chave VAPID pública não configurada.");
+        return;
+      }
+      if (result.reason === "no_sw") {
+        toast.error("Service Worker não registrado. Recarregue o app.");
+        return;
+      }
+      if (result.reason === "no_controller") {
+        toast.message("Atualizando o app para ativar notificações...");
+        window.location.reload();
+        return;
+      }
+      if (result.reason === "timeout") {
+        toast.message("Atualizando o app para ativar notificações...");
+        window.location.reload();
+        return;
+      }
+      if (result.reason === "network") {
+        toast.error("Falha de rede ao salvar a inscrição.");
+        return;
+      }
+      toast.error("Não foi possível ativar notificações.");
       return;
     }
     toast.success("Notificações ativadas com sucesso.");

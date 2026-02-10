@@ -191,13 +191,11 @@ export function SystemSettings() {
         return;
       }
       if (result.reason === "no_controller") {
-        toast.message("Atualizando o app para ativar notificações...");
-        window.location.reload();
+        toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
         return;
       }
       if (result.reason === "timeout") {
-        toast.message("Atualizando o app para ativar notificações...");
-        window.location.reload();
+        toast.error("Tempo esgotado ao ativar. Tente novamente em alguns segundos.");
         return;
       }
       if (result.reason === "network") {

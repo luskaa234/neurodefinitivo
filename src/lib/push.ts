@@ -56,6 +56,30 @@ const waitForActiveSW = async (registration: ServiceWorkerRegistration, ms = 120
   );
 };
 
+const waitForController = async (ms = 4000) => {
+  if (navigator.serviceWorker.controller) return true;
+  return await withTimeout(
+    new Promise<boolean>((resolve) => {
+      const onChange = () => {
+        navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+        resolve(true);
+      };
+      navigator.serviceWorker.addEventListener("controllerchange", onChange);
+      setTimeout(() => {
+        navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+        resolve(!!navigator.serviceWorker.controller);
+      }, ms);
+    }),
+    ms
+  );
+};
+
+const reRegisterServiceWorker = async () => {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((r) => r.unregister()));
+  return await registerServiceWorker();
+};
+
 export const registerServiceWorker = async () => {
   if (!isPushSupported()) return null;
   try {
@@ -84,44 +108,40 @@ export const subscribeToPush = async (userId?: string) => {
     return { ok: false, reason: "missing_vapid_public_key" };
   }
 
-  const registration = await registerServiceWorker();
+  let registration = await registerServiceWorker();
   if (!registration) return { ok: false, reason: "no_sw" };
-  if (typeof navigator !== "undefined" && !navigator.serviceWorker.controller) {
-    try {
-      await withTimeout(
-        new Promise<void>((resolve) => {
-          const onChange = () => {
-            navigator.serviceWorker.removeEventListener("controllerchange", onChange);
-            resolve();
-          };
-          navigator.serviceWorker.addEventListener("controllerchange", onChange);
-          registration.update?.();
-          setTimeout(() => {
-            navigator.serviceWorker.removeEventListener("controllerchange", onChange);
-            resolve();
-          }, 2500);
-        }),
-        3000
-      );
-    } catch {
-      // continue and attempt subscribe anyway
-    }
+  try {
+    await waitForController(4000);
+  } catch {
+    // ignore
   }
 
   let subscription: PushSubscription | null = null;
-  try {
-    const existing = await withTimeout(registration.pushManager.getSubscription(), 8000);
-    subscription =
+  const trySubscribe = async (reg: ServiceWorkerRegistration, timeoutMs: number) => {
+    const existing = await withTimeout(reg.pushManager.getSubscription(), 8000);
+    return (
       existing ||
       (await withTimeout(
-        registration.pushManager.subscribe({
+        reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
         }),
-        12000
-      ));
+        timeoutMs
+      ))
+    );
+  };
+
+  try {
+    subscription = await trySubscribe(registration, 15000);
   } catch {
-    return { ok: false, reason: "timeout" };
+    try {
+      registration = await reRegisterServiceWorker();
+      if (!registration) return { ok: false, reason: "no_sw" };
+      await waitForController(4000);
+      subscription = await trySubscribe(registration, 20000);
+    } catch {
+      return { ok: false, reason: "timeout" };
+    }
   }
 
   try {

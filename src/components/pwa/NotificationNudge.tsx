@@ -84,7 +84,7 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "timeout") {
-        toast.error("Tempo esgotado ao ativar. Feche e abra o app novamente.");
+        toast.error("Tempo esgotado ao ativar. Tente novamente em alguns segundos.");
         return;
       }
       if (res.reason === "network") {
@@ -96,7 +96,7 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "no_controller") {
-        toast.error("O app precisa ser recarregado para ativar as notificações.");
+        toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
         return;
       }
       toast.error("Não foi possível ativar as notificações.");

@@ -88,7 +88,16 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "timeout") {
-        toast.error("Tempo esgotado ao ativar. Verifique o navegador ou o PWA.");
+        if (user?.id) {
+          const key = `push-auto-reload:${user.id}`;
+          if (localStorage.getItem(key) !== "1") {
+            localStorage.setItem(key, "1");
+            toast.message("Atualizando o app para ativar as notificações...");
+            window.location.reload();
+            return;
+          }
+        }
+        toast.error("Tempo esgotado ao ativar. Recarregue o app e tente novamente.");
         return;
       }
       if (res.reason === "network") {
@@ -97,6 +106,19 @@ export default function NotificationNudge() {
       }
       if (res.reason === "no_sw") {
         toast.error("Service Worker não registrado. Recarregue o app e tente novamente.");
+        return;
+      }
+      if (res.reason === "no_controller") {
+        if (user?.id) {
+          const key = `push-auto-reload:${user.id}`;
+          if (localStorage.getItem(key) !== "1") {
+            localStorage.setItem(key, "1");
+            toast.message("Atualizando o app para ativar as notificações...");
+            window.location.reload();
+            return;
+          }
+        }
+        toast.error("O app precisa ser recarregado para ativar as notificações.");
         return;
       }
       toast.error("Não foi possível ativar as notificações.");

@@ -69,6 +69,9 @@ export const subscribeToPush = async (userId?: string) => {
 
   const registration = await registerServiceWorker();
   if (!registration) return { ok: false, reason: "no_sw" };
+  if (typeof navigator !== "undefined" && !navigator.serviceWorker.controller) {
+    return { ok: false, reason: "no_controller" };
+  }
 
   let subscription: PushSubscription | null = null;
   try {

@@ -36,11 +36,19 @@ export const registerServiceWorker = async () => {
   if (!isPushSupported()) return null;
   try {
     const existing = await navigator.serviceWorker.getRegistration("/");
-    if (!existing) {
-      await navigator.serviceWorker.register("/sw.js");
+    if (existing) return existing;
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    try {
+      // não bloqueia em browsers que demoram para ativar
+      return await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<ServiceWorkerRegistration>((resolve) =>
+          setTimeout(() => resolve(registration), 1500)
+        ),
+      ]);
+    } catch {
+      return registration;
     }
-    const ready = await withTimeout(navigator.serviceWorker.ready, 12000);
-    return ready;
   } catch {
     return null;
   }

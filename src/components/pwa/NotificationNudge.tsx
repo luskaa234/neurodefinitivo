@@ -96,7 +96,7 @@ export default function NotificationNudge() {
         return;
       }
       if (res.reason === "no_sw") {
-        toast.error("Service Worker não registrado.");
+        toast.error("Service Worker não registrado. Recarregue o app e tente novamente.");
         return;
       }
       toast.error("Não foi possível ativar as notificações.");

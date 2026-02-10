@@ -166,54 +166,63 @@ export function SystemSettings() {
 
   const handleEnablePush = async () => {
     setIsPushLoading(true);
-    if (!pushSupported) {
-      toast.error("Seu navegador não suporta notificações push.");
-      setIsPushLoading(false);
-      return;
-    }
-    const result = await subscribeToPush(user?.id);
-    setPushPermission(getPushPermission() as NotificationPermission);
-    const sub = await getCurrentSubscription();
-    setPushEnabled(!!sub);
-    setIsPushLoading(false);
+    try {
+      if (!pushSupported) {
+        toast.error("Seu navegador não suporta notificações push.");
+        return;
+      }
 
-    if (!result.ok) {
-      if (result.reason === "denied") {
-        toast.error("Permissão negada no navegador.");
+      const result = await Promise.race([
+        subscribeToPush(user?.id),
+        new Promise<{ ok: false; reason: "timeout" }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, reason: "timeout" }), 25000)
+        ),
+      ]);
+
+      setPushPermission(getPushPermission() as NotificationPermission);
+      const sub = await getCurrentSubscription();
+      setPushEnabled(!!sub);
+
+      if (!result.ok) {
+        if (result.reason === "denied") {
+          toast.error("Permissão negada no navegador.");
+          return;
+        }
+        if (result.reason === "missing_vapid_public_key") {
+          toast.error("Chave VAPID pública não configurada.");
+          return;
+        }
+        if (result.reason === "no_sw") {
+          toast.error("Service Worker não registrado. Recarregue o app.");
+          return;
+        }
+        if (result.reason === "no_controller") {
+          toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
+          return;
+        }
+        if (result.reason === "subscribe_failed") {
+          toast.error(`Falha ao ativar push: ${result.detail || "erro desconhecido"}`);
+          return;
+        }
+        if (result.reason === "backend") {
+          toast.error(`Erro ao salvar inscrição no servidor: ${result.detail || "500"}`);
+          return;
+        }
+        if (result.reason === "timeout") {
+          toast.error("Tempo esgotado ao ativar. Tente novamente.");
+          return;
+        }
+        if (result.reason === "network") {
+          toast.error("Falha de rede ao salvar a inscrição.");
+          return;
+        }
+        toast.error("Não foi possível ativar notificações.");
         return;
       }
-      if (result.reason === "missing_vapid_public_key") {
-        toast.error("Chave VAPID pública não configurada.");
-        return;
-      }
-      if (result.reason === "no_sw") {
-        toast.error("Service Worker não registrado. Recarregue o app.");
-        return;
-      }
-      if (result.reason === "no_controller") {
-        toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
-        return;
-      }
-      if (result.reason === "subscribe_failed") {
-        toast.error(`Falha ao ativar push: ${result.detail || "erro desconhecido"}`);
-        return;
-      }
-      if (result.reason === "backend") {
-        toast.error(`Erro ao salvar inscrição no servidor: ${result.detail || "500"}`);
-        return;
-      }
-      if (result.reason === "timeout") {
-        toast.error("Tempo esgotado ao ativar. Tente novamente em alguns segundos.");
-        return;
-      }
-      if (result.reason === "network") {
-        toast.error("Falha de rede ao salvar a inscrição.");
-        return;
-      }
-      toast.error("Não foi possível ativar notificações.");
-      return;
+      toast.success("Notificações ativadas com sucesso.");
+    } finally {
+      setIsPushLoading(false);
     }
-    toast.success("Notificações ativadas com sucesso.");
   };
 
   const handleDisablePush = async () => {

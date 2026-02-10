@@ -83,6 +83,7 @@ export function SystemSettings() {
 
   useEffect(() => {
     loadSettings();
+    syncRemoteSettings();
   }, []);
 
   useEffect(() => {
@@ -143,8 +144,33 @@ export function SystemSettings() {
     }
   };
 
+  const syncRemoteSettings = async () => {
+    try {
+      const res = await fetch("/api/settings/global");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.settings) return;
+      const merged = {
+        ...DEFAULT_SETTINGS,
+        ...(data.settings || {}),
+      } as AppSettings;
+      saveSettings(merged);
+      setSettings(merged);
+      setPushGlobalEnabled(!!merged.push_global_enabled);
+      applySettingsToDocument(merged);
+      window.dispatchEvent(new Event("app-settings-updated"));
+    } catch {
+      // ignore
+    }
+  };
+
   const handleEnablePush = async () => {
     setIsPushLoading(true);
+    if (!pushSupported) {
+      toast.error("Seu navegador não suporta notificações push.");
+      setIsPushLoading(false);
+      return;
+    }
     const result = await subscribeToPush(user?.id);
     setPushPermission(getPushPermission() as NotificationPermission);
     const sub = await getCurrentSubscription();
@@ -152,7 +178,13 @@ export function SystemSettings() {
     setIsPushLoading(false);
 
     if (!result.ok) {
-      toast.error("Não foi possível ativar notificações.");
+      const reason =
+        result.reason === "denied"
+          ? "Permissão negada no navegador."
+          : result.reason === "missing_vapid_public_key"
+            ? "Chave VAPID pública não configurada."
+            : "Não foi possível ativar notificações.";
+      toast.error(reason);
       return;
     }
     toast.success("Notificações ativadas com sucesso.");
@@ -211,6 +243,13 @@ export function SystemSettings() {
       setSettings(newSettings);
       applySettingsToDocument(newSettings);
       window.dispatchEvent(new Event("app-settings-updated"));
+      fetch("/api/settings/global", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: newSettings }),
+      }).catch(() => {
+        // ignore
+      });
       
       toast.success('✅ Configurações salvas e aplicadas com sucesso!');
       
@@ -238,6 +277,13 @@ export function SystemSettings() {
     saveSettings(nextSettings);
     setSettings(nextSettings);
     window.dispatchEvent(new Event("app-settings-updated"));
+    fetch("/api/settings/global", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: nextSettings }),
+    }).catch(() => {
+      // ignore
+    });
     toast.success(
       value
         ? "Notificações globais ativadas para todos."

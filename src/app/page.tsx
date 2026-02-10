@@ -62,6 +62,19 @@ export default function Home() {
     if (!user?.id) return;
     if (!isPushSupported()) return;
 
+    const syncSettings = async () => {
+      try {
+        const res = await fetch("/api/settings/global");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.settings) return;
+        localStorage.setItem("app-settings", JSON.stringify(data.settings));
+        window.dispatchEvent(new Event("app-settings-updated"));
+      } catch {
+        // ignore
+      }
+    };
+
     const tryAutoSubscribe = () => {
       const settings = loadStoredSettings();
       if (!settings.push_global_enabled) return;
@@ -72,7 +85,13 @@ export default function Home() {
     };
 
     tryAutoSubscribe();
+    syncSettings();
     window.addEventListener("app-settings-updated", tryAutoSubscribe);
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        syncSettings();
+      }
+    });
     return () => window.removeEventListener("app-settings-updated", tryAutoSubscribe);
   }, [user?.id]);
 

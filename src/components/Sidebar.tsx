@@ -132,7 +132,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         <div
           className={cn(
             "hidden md:flex flex-col h-screen bg-sidebar/95 backdrop-blur-md border-r border-sidebar-border/80 shadow-xl transition-all duration-300",
-            isCollapsed ? "w-20" : "w-64"
+            isCollapsed ? "w-20" : "w-72"
           )}
         >
           <Header collapsed={isCollapsed} settings={appSettings} />
@@ -217,8 +217,8 @@ function MenuList({
   collapsed: boolean;
 }) {
   return (
-    <ScrollArea className="flex-1 px-3 py-3">
-      <div className="space-y-1">
+    <ScrollArea className="flex-1 px-3 py-4">
+      <div className="space-y-2">
         {menuItems.map((item) => (
           <Button
             key={item.id}

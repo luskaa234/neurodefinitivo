@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +65,7 @@ export function SystemSettings() {
   const [pushGlobalEnabled, setPushGlobalEnabled] = useState(false);
   const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
   const [pushLastError, setPushLastError] = useState<string | null>(null);
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     register,
@@ -170,6 +171,13 @@ export function SystemSettings() {
     setIsPushLoading(true);
     setPushStatusMessage("Ativando notificações...");
     setPushLastError(null);
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      setIsPushLoading(false);
+      setPushStatusMessage(null);
+      setPushLastError("Tempo esgotado ao ativar.");
+      toast.error("Tempo esgotado ao ativar.");
+    }, 26000);
     try {
       if (!pushSupported) {
         toast.error("Seu navegador não suporta notificações push.");
@@ -238,7 +246,11 @@ export function SystemSettings() {
       toast.success("Notificações ativadas com sucesso.");
       setPushStatusMessage("Notificações ativadas.");
     } finally {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
       setIsPushLoading(false);
+      if (!pushEnabled) {
+        setPushStatusMessage(null);
+      }
     }
   };
 
@@ -733,6 +745,20 @@ export function SystemSettings() {
                     )}
                   </div>
                 )}
+                <div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsPushLoading(false);
+                      setPushStatusMessage(null);
+                      setPushLastError(null);
+                    }}
+                  >
+                    Resetar status
+                  </Button>
+                </div>
 
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="font-semibold">iOS (iPhone/iPad)</p>

@@ -62,6 +62,7 @@ export function DoctorConsultations() {
   const [justifications, setJustifications] = useState<Justification[]>([]);
   const [notifications, setNotifications] = useState<WhatsAppNotification[]>([]);
   const [justificationSearch, setJustificationSearch] = useState("");
+  const [appointmentSearch, setAppointmentSearch] = useState("");
 
   const {
     register,
@@ -159,6 +160,39 @@ export function DoctorConsultations() {
     (apt) => apt.date > todayDateStr && apt.status !== "cancelado"
   );
 
+  const getPatientName = (patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    return patient ? patient.name : 'Paciente não encontrado';
+  };
+
+  const getPatientPhone = (patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    return patient?.phone || 'Não informado';
+  };
+
+  const justificationAppointments = myAppointments
+    .filter((apt) => apt.status === "confirmado" || apt.status === "pendente")
+    .sort(
+      (a, b) =>
+        new Date(`${a.date}T${a.time || "00:00"}`).getTime() -
+        new Date(`${b.date}T${b.time || "00:00"}`).getTime()
+    );
+
+  const filteredJustificationAppointments = justificationAppointments.filter((apt) => {
+    const q = appointmentSearch.trim().toLowerCase();
+    if (!q) return true;
+    const patientName = getPatientName(apt.patient_id).toLowerCase();
+    const dateLabel = formatDateBR(apt.date);
+    const timeLabel = String(apt.time || "").toLowerCase();
+    const typeLabel = String(apt.type || "").toLowerCase();
+    return (
+      patientName.includes(q) ||
+      dateLabel.includes(q) ||
+      timeLabel.includes(q) ||
+      typeLabel.includes(q)
+    );
+  });
+
   const filteredJustifications = justifications.filter((j) => {
     if (!justificationSearch.trim()) return true;
     const appointment = appointments.find((apt) => apt.id === j.appointment_id);
@@ -170,16 +204,6 @@ export function DoctorConsultations() {
       String(j.description || "").toLowerCase().includes(q)
     );
   });
-
-  const getPatientName = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient ? patient.name : 'Paciente não encontrado';
-  };
-
-  const getPatientPhone = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient?.phone || 'Não informado';
-  };
 
   const sendJustificationWhatsApp = (appointmentId: string) => {
     const appointment = appointments.find((apt) => apt.id === appointmentId);
@@ -286,10 +310,25 @@ export function DoctorConsultations() {
             <DialogHeader>
               <DialogTitle>Justificar Falta Médica</DialogTitle>
               <DialogDescription>
-                Registre o motivo da ausência em uma consulta agendada
+                Registre o motivo da ausência com padrão profissional e histórico completo.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmitJustification)} className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm text-gray-600">
+                Selecione a consulta e descreva o motivo com clareza. Isso mantém o histórico
+                clínico bem organizado e transparente para a equipe.
+              </div>
+
+              <div className="space-y-2">
+                <Label>Buscar consulta</Label>
+                <Input
+                  type="search"
+                  placeholder="Digite paciente, data, hora ou tipo de atendimento"
+                  value={appointmentSearch}
+                  onChange={(e) => setAppointmentSearch(e.target.value)}
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label>Consulta</Label>
                 <Select onValueChange={(value) => setValue('appointment_id', value)}>
@@ -297,9 +336,7 @@ export function DoctorConsultations() {
                     <SelectValue placeholder="Selecione a consulta" />
                   </SelectTrigger>
                   <SelectContent>
-                    {myAppointments
-                      .filter(apt => apt.status === 'confirmado' || apt.status === 'pendente')
-                      .map((appointment) => (
+                    {filteredJustificationAppointments.map((appointment) => (
                       <SelectItem key={appointment.id} value={appointment.id}>
                         {getPatientName(appointment.patient_id)} - {formatDateBR(appointment.date)} às {appointment.time}
                       </SelectItem>
@@ -311,24 +348,39 @@ export function DoctorConsultations() {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label>Motivo da Falta</Label>
-                <Select onValueChange={(value) => setValue('reason', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o motivo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Doença">Doença</SelectItem>
-                    <SelectItem value="Emergência Familiar">Emergência Familiar</SelectItem>
-                    <SelectItem value="Compromisso Médico">Compromisso Médico</SelectItem>
-                    <SelectItem value="Congresso/Curso">Congresso/Curso</SelectItem>
-                    <SelectItem value="Problema de Transporte">Problema de Transporte</SelectItem>
-                    <SelectItem value="Outros">Outros</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.reason && (
-                  <p className="text-sm text-red-600">{errors.reason.message}</p>
-                )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Motivo da Falta</Label>
+                  <Select onValueChange={(value) => setValue('reason', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o motivo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Doença">Doença</SelectItem>
+                      <SelectItem value="Emergência Familiar">Emergência Familiar</SelectItem>
+                      <SelectItem value="Compromisso Médico">Compromisso Médico</SelectItem>
+                      <SelectItem value="Congresso/Curso">Congresso/Curso</SelectItem>
+                      <SelectItem value="Problema de Transporte">Problema de Transporte</SelectItem>
+                      <SelectItem value="Outros">Outros</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.reason && (
+                    <p className="text-sm text-red-600">{errors.reason.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="date">Data da Justificativa</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    defaultValue={toInputDate(nowLocal())}
+                    {...register('date')}
+                  />
+                  {errors.date && (
+                    <p className="text-sm text-red-600">{errors.date.message}</p>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -341,19 +393,6 @@ export function DoctorConsultations() {
                 />
                 {errors.description && (
                   <p className="text-sm text-red-600">{errors.description.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="date">Data da Justificativa</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  defaultValue={toInputDate(nowLocal())}
-                  {...register('date')}
-                />
-                {errors.date && (
-                  <p className="text-sm text-red-600">{errors.date.message}</p>
                 )}
               </div>
 

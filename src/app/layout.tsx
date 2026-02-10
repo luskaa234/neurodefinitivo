@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { AppProvider } from "@/contexts/AppContext";
 import RegisterSW from "@/components/pwa/RegisterSW";
 import SettingsApplier from "@/components/SettingsApplier";
+import NotificationNudge from "@/components/pwa/NotificationNudge";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["latin"] });
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <AppProvider>
             <SettingsApplier />
+            <NotificationNudge />
             {children}
           </AppProvider>
         </AuthProvider>

@@ -194,6 +194,14 @@ export function SystemSettings() {
         toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
         return;
       }
+      if (result.reason === "subscribe_failed") {
+        toast.error(`Falha ao ativar push: ${result.detail || "erro desconhecido"}`);
+        return;
+      }
+      if (result.reason === "backend") {
+        toast.error(`Erro ao salvar inscrição no servidor: ${result.detail || "500"}`);
+        return;
+      }
       if (result.reason === "timeout") {
         toast.error("Tempo esgotado ao ativar. Tente novamente em alguns segundos.");
         return;

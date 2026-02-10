@@ -133,19 +133,20 @@ export const subscribeToPush = async (userId?: string) => {
 
   try {
     subscription = await trySubscribe(registration, 15000);
-  } catch {
+  } catch (err: any) {
     try {
       registration = await reRegisterServiceWorker();
       if (!registration) return { ok: false, reason: "no_sw" };
       await waitForController(4000);
       subscription = await trySubscribe(registration, 20000);
-    } catch {
-      return { ok: false, reason: "timeout" };
+    } catch (inner: any) {
+      const detail = String(inner?.message || err?.message || "subscribe_failed");
+      return { ok: false, reason: "subscribe_failed", detail };
     }
   }
 
   try {
-    await withTimeout(
+    const res = await withTimeout(
       fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,8 +159,12 @@ export const subscribeToPush = async (userId?: string) => {
       }),
       12000
     );
-  } catch {
-    return { ok: false, reason: "network" };
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      return { ok: false, reason: "backend", detail: txt || String(res.status) };
+    }
+  } catch (err: any) {
+    return { ok: false, reason: "network", detail: String(err?.message || err) };
   }
 
   return { ok: true };

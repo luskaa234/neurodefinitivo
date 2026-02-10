@@ -118,10 +118,11 @@ export default function NotificationNudge() {
     <>
       {showBanner && <div className="h-12" aria-hidden />}
       {showBanner && (
-        <div className="fixed inset-x-0 top-0 z-50 h-12 border-b bg-white/95 backdrop-blur">
-          <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 text-sm">
+        <div className="fixed inset-x-0 top-0 z-50 border-b bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
             <span className="font-medium text-gray-900">
-              Ative as notificações para não perder nenhum atendimento.
+              Ative as notificações para receber avisos de novos atendimentos,
+              reagendamentos e cancelamentos.
             </span>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={enablePush} disabled={isLoading}>
@@ -136,14 +137,14 @@ export default function NotificationNudge() {
       )}
 
       <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-md sm:w-full">
           <DialogHeader>
             <DialogTitle>Ativar notificações?</DialogTitle>
             <DialogDescription>
-              Você receberá alertas de novos atendimentos, reagendamentos e cancelamentos.
+              Receba avisos de novos atendimentos, reagendamentos e cancelamentos.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
               onClick={() => {

@@ -20,17 +20,6 @@ export const getPushPermission = () =>
     ? Notification.permission
     : "unsupported";
 
-export const registerServiceWorker = async () => {
-  if (!isPushSupported()) return null;
-  try {
-    const existing = await navigator.serviceWorker.getRegistration("/");
-    if (existing) return existing;
-    return await navigator.serviceWorker.register("/sw.js");
-  } catch {
-    return null;
-  }
-};
-
 const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<never>((_, reject) => {
@@ -40,6 +29,20 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
     return await Promise.race([promise, timeout]);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+export const registerServiceWorker = async () => {
+  if (!isPushSupported()) return null;
+  try {
+    const existing = await navigator.serviceWorker.getRegistration("/");
+    if (!existing) {
+      await navigator.serviceWorker.register("/sw.js");
+    }
+    const ready = await withTimeout(navigator.serviceWorker.ready, 12000);
+    return ready;
+  } catch {
+    return null;
   }
 };
 

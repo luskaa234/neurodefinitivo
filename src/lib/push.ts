@@ -22,15 +22,25 @@ export const getPushPermission = () =>
 
 export const registerServiceWorker = async () => {
   if (!isPushSupported()) return null;
-  if (navigator.serviceWorker.controller) {
-    return navigator.serviceWorker.ready;
-  }
   try {
-    await navigator.serviceWorker.register("/sw.js");
+    const existing = await navigator.serviceWorker.getRegistration("/");
+    if (existing) return existing;
+    return await navigator.serviceWorker.register("/sw.js");
   } catch {
-    // ignore
+    return null;
   }
-  return navigator.serviceWorker.ready;
+};
+
+const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 };
 
 export const subscribeToPush = async (userId?: string) => {
@@ -49,27 +59,38 @@ export const subscribeToPush = async (userId?: string) => {
   const registration = await registerServiceWorker();
   if (!registration) return { ok: false, reason: "no_sw" };
 
-  const existing = await registration.pushManager.getSubscription();
-  const subscription =
-    existing ||
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    }));
+  let subscription: PushSubscription | null = null;
+  try {
+    const existing = await withTimeout(registration.pushManager.getSubscription(), 8000);
+    subscription =
+      existing ||
+      (await withTimeout(
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        }),
+        12000
+      ));
+  } catch {
+    return { ok: false, reason: "timeout" };
+  }
 
   try {
-    await fetch("/api/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subscription,
-        userId,
-        platform: navigator.platform,
-        userAgent: navigator.userAgent,
+    await withTimeout(
+      fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription,
+          userId,
+          platform: navigator.platform,
+          userAgent: navigator.userAgent,
+        }),
       }),
-    });
+      12000
+    );
   } catch {
-    // ignore
+    return { ok: false, reason: "network" };
   }
 
   return { ok: true };

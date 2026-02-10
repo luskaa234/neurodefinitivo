@@ -68,26 +68,41 @@ export default function NotificationNudge() {
   const enablePush = async () => {
     if (!user?.id) return;
     setIsLoading(true);
-    const res = await subscribeToPush(user.id);
-    setIsLoading(false);
-    setPushPermission(getPushPermission() as NotificationPermission);
-    if (res.ok) {
-      const sub = await getCurrentSubscription();
-      setHasSubscription(!!sub);
-      localStorage.setItem(`push-entry-prompted:${user.id}`, "1");
-      toast.success("Notificações ativadas com sucesso.");
-      setPromptOpen(false);
-      return;
+    try {
+      const res = await subscribeToPush(user.id);
+      setPushPermission(getPushPermission() as NotificationPermission);
+      if (res.ok) {
+        const sub = await getCurrentSubscription();
+        setHasSubscription(!!sub);
+        localStorage.setItem(`push-entry-prompted:${user.id}`, "1");
+        toast.success("Notificações ativadas com sucesso.");
+        setPromptOpen(false);
+        return;
+      }
+      if (res.reason === "denied") {
+        toast.error("Permissão de notificações bloqueada no navegador.");
+        return;
+      }
+      if (res.reason === "missing_vapid_public_key") {
+        toast.error("Chave VAPID pública não configurada.");
+        return;
+      }
+      if (res.reason === "timeout") {
+        toast.error("Tempo esgotado ao ativar. Verifique o navegador ou o PWA.");
+        return;
+      }
+      if (res.reason === "network") {
+        toast.error("Falha de rede ao salvar a inscrição.");
+        return;
+      }
+      if (res.reason === "no_sw") {
+        toast.error("Service Worker não registrado.");
+        return;
+      }
+      toast.error("Não foi possível ativar as notificações.");
+    } finally {
+      setIsLoading(false);
     }
-    if (res.reason === "denied") {
-      toast.error("Permissão de notificações bloqueada no navegador.");
-      return;
-    }
-    if (res.reason === "missing_vapid_public_key") {
-      toast.error("Chave VAPID pública não configurada.");
-      return;
-    }
-    toast.error("Não foi possível ativar as notificações.");
   };
 
   const dismissBanner = () => {

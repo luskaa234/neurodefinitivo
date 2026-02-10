@@ -63,6 +63,8 @@ export function SystemSettings() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [isPushLoading, setIsPushLoading] = useState(false);
   const [pushGlobalEnabled, setPushGlobalEnabled] = useState(false);
+  const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
+  const [pushLastError, setPushLastError] = useState<string | null>(null);
 
   const {
     register,
@@ -166,9 +168,12 @@ export function SystemSettings() {
 
   const handleEnablePush = async () => {
     setIsPushLoading(true);
+    setPushStatusMessage("Ativando notificações...");
+    setPushLastError(null);
     try {
       if (!pushSupported) {
         toast.error("Seu navegador não suporta notificações push.");
+        setPushLastError("Navegador sem suporte a push.");
         return;
       }
 
@@ -186,40 +191,52 @@ export function SystemSettings() {
       if (!result.ok) {
         if (result.reason === "denied") {
           toast.error("Permissão negada no navegador.");
+          setPushLastError("Permissão negada no navegador.");
           return;
         }
         if (result.reason === "missing_vapid_public_key") {
           toast.error("Chave VAPID pública não configurada.");
+          setPushLastError("Chave VAPID pública não configurada.");
           return;
         }
         if (result.reason === "no_sw") {
           toast.error("Service Worker não registrado. Recarregue o app.");
+          setPushLastError("Service Worker não registrado.");
           return;
         }
         if (result.reason === "no_controller") {
           toast.error("O app ainda está carregando o serviço de notificações. Tente novamente.");
+          setPushLastError("Service Worker ainda não controlando a página.");
           return;
         }
         if (result.reason === "subscribe_failed") {
-          toast.error(`Falha ao ativar push: ${result.detail || "erro desconhecido"}`);
+          const detail = result.detail || "erro desconhecido";
+          toast.error(`Falha ao ativar push: ${detail}`);
+          setPushLastError(`Falha ao ativar push: ${detail}`);
           return;
         }
         if (result.reason === "backend") {
-          toast.error(`Erro ao salvar inscrição no servidor: ${result.detail || "500"}`);
+          const detail = result.detail || "500";
+          toast.error(`Erro ao salvar inscrição no servidor: ${detail}`);
+          setPushLastError(`Erro no servidor ao salvar inscrição: ${detail}`);
           return;
         }
         if (result.reason === "timeout") {
           toast.error("Tempo esgotado ao ativar. Tente novamente.");
+          setPushLastError("Tempo esgotado ao ativar.");
           return;
         }
         if (result.reason === "network") {
           toast.error("Falha de rede ao salvar a inscrição.");
+          setPushLastError("Falha de rede ao salvar a inscrição.");
           return;
         }
         toast.error("Não foi possível ativar notificações.");
+        setPushLastError("Não foi possível ativar notificações.");
         return;
       }
       toast.success("Notificações ativadas com sucesso.");
+      setPushStatusMessage("Notificações ativadas.");
     } finally {
       setIsPushLoading(false);
     }
@@ -687,7 +704,7 @@ export function SystemSettings() {
                     disabled={!pushSupported || isPushLoading}
                     className="bg-emerald-600 hover:bg-emerald-700"
                   >
-                    Ativar notificações
+                    {isPushLoading ? "Ativando..." : "Ativar notificações"}
                   </Button>
                   <Button
                     type="button"
@@ -706,6 +723,16 @@ export function SystemSettings() {
                     Enviar teste
                   </Button>
                 </div>
+                {(pushStatusMessage || pushLastError) && (
+                  <div className="rounded-lg border bg-white p-3 text-xs text-slate-600">
+                    {pushStatusMessage && (
+                      <p><strong>Status:</strong> {pushStatusMessage}</p>
+                    )}
+                    {pushLastError && (
+                      <p className="text-red-600"><strong>Erro:</strong> {pushLastError}</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="font-semibold">iOS (iPhone/iPad)</p>

@@ -1,4 +1,17 @@
 /* eslint-disable no-restricted-globals */
+const CACHE_NAME = "neuro-pwa-v1";
+const OFFLINE_URL = "/offline.html";
+const CORE_ASSETS = ["/", "/manifest.json", "/offline.html", "/icon-192x192.png", "/icon-512x512.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      .then(() => self.skipWaiting())
+  );
+});
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -30,7 +43,38 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : null)))
+      ),
+      self.clients.claim(),
+    ])
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") return;
+
+  // Navegação: tenta rede, cai no offline
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(OFFLINE_URL))
+    );
+    return;
+  }
+
+  // Assets: cache-first
+  if (request.url.includes("/_next/") || request.destination === "style" || request.destination === "script" || request.destination === "image") {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        return res;
+      }))
+    );
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {

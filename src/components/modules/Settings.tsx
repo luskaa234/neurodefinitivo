@@ -712,25 +712,9 @@ export function SystemSettings() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    onClick={handleEnablePush}
-                    disabled={!pushSupported || isPushLoading}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    {isPushLoading ? "Ativando..." : "Ativar notificações"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleDisablePush}
-                    disabled={!pushEnabled || isPushLoading}
-                  >
-                    Desativar
-                  </Button>
-                  <Button
-                    type="button"
                     variant="outline"
                     onClick={handleTestPush}
-                    disabled={!pushEnabled || isPushLoading}
+                    disabled={!pushSupported || isPushLoading}
                   >
                     Enviar teste
                   </Button>
@@ -745,20 +729,6 @@ export function SystemSettings() {
                     )}
                   </div>
                 )}
-                <div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setIsPushLoading(false);
-                      setPushStatusMessage(null);
-                      setPushLastError(null);
-                    }}
-                  >
-                    Resetar status
-                  </Button>
-                </div>
 
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="font-semibold">iOS (iPhone/iPad)</p>

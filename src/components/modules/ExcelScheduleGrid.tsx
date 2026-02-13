@@ -176,6 +176,9 @@ const getAllowedTimeSlots = (dateStr?: string) => {
   ranges.forEach(([start, end]) => {
     for (let h = start; h <= end; h++) {
       slots.push(`${pad2(h)}:00`);
+      if (h < end) {
+        slots.push(`${pad2(h)}:30`);
+      }
     }
   });
   return slots;
@@ -1295,6 +1298,23 @@ export default function ExcelScheduleGrid() {
                                   .join(", ");
                                 const colorKey = getAllPatients(apt)[0] || apt.patient_id;
                                 const bg = hashColor(colorKey);
+                                const status = String(apt.status || "").toLowerCase();
+                                const statusLabel =
+                                  status === "confirmado"
+                                    ? "Confirmado"
+                                    : status === "cancelado"
+                                      ? "Cancelado"
+                                      : status === "realizado"
+                                        ? "Realizado"
+                                      : "Pendente";
+                                const statusClass =
+                                  status === "confirmado"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : status === "cancelado"
+                                      ? "bg-rose-100 text-rose-800"
+                                      : status === "realizado"
+                                        ? "bg-sky-100 text-sky-800"
+                                      : "bg-amber-100 text-amber-800";
                                 return (
                                   <div
                                     key={apt.id}
@@ -1315,6 +1335,16 @@ export default function ExcelScheduleGrid() {
                                       </div>
                                     )}
                                     <div className="text-[9px] opacity-90 break-words">{apt.type}</div>
+                                    <div className="mt-1">
+                                      <span
+                                        className={cn(
+                                          "inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                          statusClass
+                                        )}
+                                      >
+                                        {statusLabel}
+                                      </span>
+                                    </div>
                                   </div>
                                 );
                               })}

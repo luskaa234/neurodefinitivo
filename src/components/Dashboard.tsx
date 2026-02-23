@@ -181,6 +181,7 @@ export function Dashboard() {
 
   const today = nowLocal();
   const todayDateStr = toInputDate(today);
+  const currentMonthKey = today.getFullYear() * 100 + (today.getMonth() + 1);
   const toDateKey = (value?: string) => {
     if (!value) return null;
     const base = value.slice(0, 10);
@@ -197,6 +198,11 @@ export function Dashboard() {
       return y * 10000 + m * 100 + d;
     }
     return null;
+  };
+  const isCurrentMonth = (value?: string) => {
+    const dateKey = toDateKey(value);
+    if (dateKey === null) return false;
+    return Math.floor(dateKey / 100) === currentMonthKey;
   };
   const todayKey = toDateKey(todayDateStr);
   const baseAppointments = Array.isArray(appointments)
@@ -230,7 +236,9 @@ export function Dashboard() {
   });
 
   
-  const confirmedAppointments = baseAppointments.filter(apt => apt.status === 'confirmado').length;
+  const confirmedAppointmentsThisMonth = baseAppointments.filter(
+    (apt) => apt.status === "confirmado" && isCurrentMonth(apt.date)
+  ).length;
 
   const dashboardAppointments = Array.isArray(appointments)
     ? appointments.filter((apt) => {
@@ -391,8 +399,8 @@ export function Dashboard() {
           },
           {
             title: 'Confirmadas',
-            value: confirmedAppointments.toString(),
-            description: 'Consultas confirmadas',
+            value: confirmedAppointmentsThisMonth.toString(),
+            description: 'Consultas confirmadas no mês',
             icon: CheckCircle,
             color: 'text-green-600',
             bgColor: 'bg-green-50',
@@ -617,7 +625,7 @@ export function Dashboard() {
             Pendentes: {pendingAppointments.length}
           </div>
           <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 sm:text-xs">
-            Confirmadas: {confirmedAppointments}
+            Confirmadas no mês: {confirmedAppointmentsThisMonth}
           </div>
         </div>
       </div>

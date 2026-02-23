@@ -50,6 +50,14 @@ export function AgendamentoDashboard() {
   const thisWeekDate = new Date(today);
   thisWeekDate.setDate(thisWeekDate.getDate() + 7);
   const thisWeekDateStr = `${thisWeekDate.getFullYear()}-${String(thisWeekDate.getMonth() + 1).padStart(2, "0")}-${String(thisWeekDate.getDate()).padStart(2, "0")}`;
+  const currentMonthKey = today.getFullYear() * 100 + (today.getMonth() + 1);
+  const isCurrentMonth = (value?: string) => {
+    if (!value) return false;
+    const base = value.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return false;
+    const [y, m] = base.split("-").map(Number);
+    return y * 100 + m === currentMonthKey;
+  };
 
   // Métricas específicas para agendamento
   const todayAppointments = appointments.filter(
@@ -66,6 +74,9 @@ export function AgendamentoDashboard() {
 
   const pendingConfirmations = appointments.filter(apt => apt.status ===  'pendente');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmado');
+  const confirmedAppointmentsThisMonth = confirmedAppointments.filter((apt) =>
+    isCurrentMonth(apt.date)
+  );
   const canceledToday = appointments.filter(
     (apt) => apt.status === "cancelado" && apt.date === todayDateStr
   );
@@ -226,7 +237,7 @@ export function AgendamentoDashboard() {
             Pendentes: {pendingConfirmations.length}
           </div>
           <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-            Confirmadas: {confirmedAppointments.length}
+            Confirmadas no mês: {confirmedAppointmentsThisMonth.length}
           </div>
         </div>
       </div>

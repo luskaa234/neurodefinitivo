@@ -52,6 +52,7 @@ import {
   Search,
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { User } from "@/types";
 import { useForm } from "react-hook-form";
@@ -76,6 +77,7 @@ type Cred = { name: string; role: string; email: string; password: string };
 
 export function UserManagement() {
   const { users, addUser, reloadAll } = useApp();
+  const { loginAsUser } = useAuth();
 
   // modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -530,6 +532,15 @@ export function UserManagement() {
                           onClick={() => openEdit(u)}
                         >
                           Completar cadastro
+                        </Button>
+                      )}
+                      {u.role !== "admin" && u.role !== "financeiro" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => loginAsUser(u.id)}
+                        >
+                          Entrar agora
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" onClick={() => openView(u)}>

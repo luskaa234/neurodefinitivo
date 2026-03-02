@@ -251,6 +251,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return [normalized];
   };
 
+  const forceAllAppointmentsToPending = async () => {
+    const candidates = buildStatusCandidates("pendente");
+    let lastError: any = null;
+
+    for (const candidate of candidates) {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: candidate })
+        .neq("status", candidate);
+
+      if (!error) {
+        if (candidate === "agendado" || candidate === "pendente") {
+          pendingStatusRef.current = candidate;
+        }
+        return candidate;
+      }
+
+      lastError = error;
+      if (!isAppointmentStatusConstraintError(error)) break;
+    }
+
+    throw lastError || new Error("Não foi possível deixar os agendamentos pendentes.");
+  };
+
   const formatDateTime = (date?: string, time?: string) => {
     if (!date || !time) return "";
     const [y, m, d] = date.split("-");
@@ -698,6 +722,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     runRecovery();
+  }, [loading, loadAll]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+
+    const migrationKey = "force-all-pending-v2";
+    if (localStorage.getItem(migrationKey) === "1") return;
+
+    const run = async () => {
+      try {
+        await forceAllAppointmentsToPending();
+        localStorage.setItem(migrationKey, "1");
+        await loadAll();
+        toast.success("Todos os agendamentos foram deixados como pendente.");
+      } catch (err: any) {
+        console.error("forceAllAppointmentsToPending:", err?.message || err);
+        toast.error(err?.message || "Erro ao deixar todos os agendamentos pendentes.");
+      }
+    };
+
+    run();
   }, [loading, loadAll]);
 
   // Mantém a agenda fiel ao banco: sem mutações automáticas de status em background.

@@ -45,10 +45,11 @@ import { formatDateLongBR, formatMonthBR } from "@/utils/date";
    TIPOS
 ====================================================== */
 type UIStatus = "agendado" | "confirmado" | "realizado" | "cancelado";
-type DBStatus = "pendente" | "confirmado" | "realizado" | "cancelado";
+type DBStatus = "agendado" | "pendente" | "confirmado" | "realizado" | "cancelado";
 
-const toDbStatus = (s: UIStatus): DBStatus => (s === "agendado" ? "pendente" : s);
-const toUiStatus = (s: DBStatus | string): UIStatus => (s === "pendente" ? "agendado" : (s as UIStatus));
+const toDbStatus = (s: UIStatus): DBStatus => (s === "agendado" ? "agendado" : s);
+const toUiStatus = (s: DBStatus | string): UIStatus =>
+  s === "pendente" || s === "agendado" ? "agendado" : (s as UIStatus);
 
 type AptLike = {
   id: string;
@@ -65,6 +66,7 @@ type AptLike = {
   is_fixed?: boolean;
   is_virtual?: boolean;
   recurrence_source_id?: string;
+  created_at?: string;
 
 };
 
@@ -284,7 +286,7 @@ export default function ExcelScheduleGrid() {
     price: "",
     notes: "",
     status: "agendado",
-    is_fixed: true,
+    is_fixed: false,
   });
 
   /* ======================================================
@@ -424,6 +426,7 @@ export default function ExcelScheduleGrid() {
 
   const appointmentsBySlot = useMemo(() => {
     const map = new Map<string, AptLike[]>();
+
     doctorWeekAppointments.forEach((apt) => {
       const key = `${apt.date}__${normalizeTime(apt.time)}`;
       const arr = map.get(key) || [];
@@ -454,7 +457,7 @@ export default function ExcelScheduleGrid() {
       price: "",
       notes: "",
       status: "agendado",
-      is_fixed: true,
+      is_fixed: false,
       ...prefill,
     });
     setPanelOpen(true);
@@ -511,22 +514,21 @@ export default function ExcelScheduleGrid() {
       return;
     }
 
-    const isVirtualSelected =
-      editing &&
-      selected &&
-      (selected.is_virtual || String(selected.id || "").includes("::"));
-
-    const nextStatus = isVirtualSelected
-      ? form.status
-      : isReschedule
-        ? "agendado"
-        : form.status;
+    const nextStatus = form.status;
+    const primaryPatientId =
+      editing && selected && form.patient_ids.includes(selected.patient_id)
+        ? selected.patient_id
+        : form.patient_ids[0];
+    const primaryDoctorId =
+      editing && selected && form.doctor_ids.includes(selected.doctor_id)
+        ? selected.doctor_id
+        : form.doctor_ids[0];
 
     // PRINCIPAL = primeiro selecionado (obrigatório no banco)
     const payload = {
-      patient_id: form.patient_ids[0],
+      patient_id: primaryPatientId,
       patient_ids: uniq(form.patient_ids),
-      doctor_id: form.doctor_ids[0],
+      doctor_id: primaryDoctorId,
       doctor_ids: uniq(form.doctor_ids),
       date: form.date,
       time: form.time,
@@ -537,14 +539,20 @@ export default function ExcelScheduleGrid() {
       is_fixed: form.is_fixed,
     };
 
+    const editTargetId = editing && selected ? selected.id : "";
+
+    if (editing && !selected) {
+      toast.error("Não foi possível identificar o agendamento para editar.");
+      return;
+    }
+
     const ok =
       editing && selected
-        ? isVirtualSelected
-          ? await addAppointment(payload as any)
-          : await updateAppointment(selected.id, payload as any)
+        ? await updateAppointment(editTargetId, payload as any)
         : await addAppointment(payload as any);
 
     if (ok) {
+      await reloadAll();
       if (isReschedule && selected?.id) {
         resolveSchedulerNotification(selected.id);
       }
@@ -983,45 +991,12 @@ export default function ExcelScheduleGrid() {
       return;
     }
 
-    const runDedupe = async () => {
-      dedupeRunningRef.current = true;
-      try {
-        const idsToDelete: string[] = [];
-        duplicates.forEach((list) => {
-          const sorted = list
-            .slice()
-            .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
-          const [, ...rest] = sorted;
-          rest.forEach((apt) => idsToDelete.push(apt.id));
-        });
-
-        if (!idsToDelete.length) return;
-
-        for (const ids of chunkArray(idsToDelete, 500)) {
-          // eslint-disable-next-line no-await-in-loop
-          await supabase.from("appointment_patients").delete().in("appointment_id", ids);
-          // eslint-disable-next-line no-await-in-loop
-          await supabase.from("appointment_doctors").delete().in("appointment_id", ids);
-          // eslint-disable-next-line no-await-in-loop
-          await supabase.from("financial_records").delete().in("appointment_id", ids);
-          // eslint-disable-next-line no-await-in-loop
-          await supabase.from("appointments").delete().in("id", ids);
-        }
-
-        await reloadAll();
-        if (typeof window !== "undefined") {
-          localStorage.setItem("dedupe-scan-done", "1");
-        }
-        toast.success(`Duplicados removidos: ${idsToDelete.length}.`);
-      } catch (error) {
-        console.error(error);
-        toast.error("Erro ao remover agendamentos duplicados.");
-      } finally {
-        dedupeRunningRef.current = false;
-      }
-    };
-
-    runDedupe();
+    const duplicatedRows = duplicates.reduce((acc, list) => acc + (list.length - 1), 0);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("dedupe-scan-done", "1");
+    }
+    console.warn(`Agendamentos duplicados detectados: ${duplicatedRows}. Nenhuma exclusão automática foi executada.`);
+    toast.warning(`Encontrados ${duplicatedRows} agendamentos duplicados. Nenhum registro foi apagado automaticamente.`);
   }, [appointments, reloadAll]);
 
 
@@ -1681,11 +1656,6 @@ export default function ExcelScheduleGrid() {
                 </Button>
               </div>
               {isReschedule && (
-                <p className="text-[10px] text-amber-600">
-                  Reagendado: status será definido como pendente automaticamente.
-                </p>
-              )}
-              {isReschedule && (
                 <p className="text-[10px] text-gray-500">
                   O médico recebe notificação no login.
                 </p>
@@ -2106,11 +2076,6 @@ export default function ExcelScheduleGrid() {
                     Realizado
                   </Button>
                 </div>
-              {isReschedule && (
-                <p className="text-[10px] text-amber-600">
-                  Reagendado: status será definido como pendente automaticamente.
-                </p>
-              )}
               {isReschedule && (
                 <p className="text-[10px] text-gray-500">
                   O médico recebe notificação no login.

@@ -34,6 +34,7 @@ export interface User {
 
 /* 🔥 STATUS REAL DO BANCO */
 export type AppointmentStatus =
+  | "agendado"
   | "pendente"
   | "confirmado"
   | "realizado"
@@ -161,6 +162,16 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 ====================================================== */
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const RECURRENCE_OVERRIDE_NOTE_PREFIX = "__recurrence_override__:";
+  const RECURRENCE_INSTANCE_NOTE_PREFIX = "__recurrence_instance__:";
+  const isInternalRecurrenceNote = (notes?: string | null) => {
+    const note = String(notes || "");
+    return (
+      note.startsWith(RECURRENCE_OVERRIDE_NOTE_PREFIX) ||
+      note.startsWith(RECURRENCE_INSTANCE_NOTE_PREFIX)
+    );
+  };
+  const pendingStatusRef = React.useRef<"agendado" | "pendente">("agendado");
   const CACHE_KEY = "neuro-app-cache-v1";
   const [users, setUsers] = useState<User[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -203,7 +214,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ids.map((id) => getUserById(id)).filter(Boolean) as User[];
 
   const toUiStatus = (s: AppointmentStatus) =>
-    s === "pendente" ? "agendado" : s;
+    s === "pendente" || s === "agendado" ? "agendado" : s;
+
+  const isAppointmentStatusConstraintError = (err: any) => {
+    const msg = String(err?.message || err || "").toLowerCase();
+    return msg.includes("appointments_status_check");
+  };
+
+  const alternatePendingStatus = (status: "agendado" | "pendente") =>
+    status === "agendado" ? "pendente" : "agendado";
+
+  const normalizeAppointmentStatusForDb = (
+    status?: AppointmentStatus | string | null
+  ): AppointmentStatus => {
+    if (!status || status === "pendente" || status === "agendado") {
+      return pendingStatusRef.current;
+    }
+    if (
+      status === "confirmado" ||
+      status === "realizado" ||
+      status === "cancelado"
+    ) {
+      return status;
+    }
+    return pendingStatusRef.current;
+  };
+
+  const buildStatusCandidates = (
+    status?: AppointmentStatus | string | null
+  ): AppointmentStatus[] => {
+    const normalized = normalizeAppointmentStatusForDb(status);
+    if (normalized === "agendado" || normalized === "pendente") {
+      const alt = alternatePendingStatus(normalized);
+      return [normalized, alt];
+    }
+    return [normalized];
+  };
 
   const formatDateTime = (date?: string, time?: string) => {
     if (!date || !time) return "";
@@ -429,15 +475,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     `${dateOverride ?? apt.date}|${apt.time}|${apt.doctor_id}|${apt.patient_id}`;
 
   const expandWeeklyAppointments = (base: Appointment[]) => {
+    const isRecurrenceOverride = (apt: Appointment) =>
+      typeof apt.notes === "string" &&
+      apt.notes.startsWith(RECURRENCE_OVERRIDE_NOTE_PREFIX);
+
     const today = toDateOnly(new Date());
     const fixedEnd = parseDate(RECURRING_END_DATE);
     const horizon = fixedEnd && fixedEnd > today ? fixedEnd : addDays(today, 7);
     const existingKeys = new Set(base.map((apt) => makeAppointmentKey(apt)));
-    const expanded: Appointment[] = [...base];
+    const visibleBase = base.filter((apt) => !isRecurrenceOverride(apt));
+    const expanded: Appointment[] = [...visibleBase];
 
-    base.forEach((apt) => {
+    visibleBase.forEach((apt) => {
       if (apt.status === "cancelado") return;
-      if (apt.is_fixed === false) return;
+      if (apt.is_fixed !== true) return;
 
       const baseDate = parseDate(apt.date);
       if (!baseDate) return;
@@ -455,7 +506,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...apt,
           id: `${apt.id}::${nextDate}`,
           date: nextDate,
-          status: "confirmado",
+          status: apt.status,
           is_virtual: true,
           recurrence_source_id: apt.id,
           is_fixed: true,
@@ -479,39 +530,74 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
 
-      const [usersRes, aptRes, finRes, medRes, recRes] = await Promise.all([
+      const [usersRes, finRes, medRes, recRes] = await Promise.all([
         supabase.from("users").select("*"),
-
-        supabase
-          .from("appointments")
-          .select(
-            `
-            *,
-            appointment_patients(patient_id),
-            appointment_doctors(doctor_id)
-          `
-          )
-          .gte("date", "2026-01-01")
-          .order("date", { ascending: true })
-          .order("time", { ascending: true }),
 
         supabase.from("financial_records").select("*"),
         supabase.from("medical_records").select("*"),
         supabase.from("appointment_recurrences").select("*"),
       ]);
 
+      let aptRes = await supabase
+        .from("appointments")
+        .select(
+          `
+            *,
+            appointment_patients(patient_id),
+            appointment_doctors(doctor_id)
+          `
+        )
+        .gte("date", "2026-01-01")
+        .order("date", { ascending: true })
+        .order("time", { ascending: true });
+
+      // Fallback robusto: se falhar por relação/permissão das tabelas relacionais,
+      // carrega agendamentos sem joins para não ficar preso em cache antigo.
+      if (aptRes.error) {
+        console.warn(
+          "loadAll appointments with relations failed, trying fallback:",
+          aptRes.error.message
+        );
+        const basicAptRes = await supabase
+          .from("appointments")
+          .select("*")
+          .gte("date", "2026-01-01")
+          .order("date", { ascending: true })
+          .order("time", { ascending: true });
+
+        if (!basicAptRes.error && basicAptRes.data) {
+          aptRes = {
+            ...basicAptRes,
+            data: basicAptRes.data.map((a: any) => ({
+              ...a,
+              appointment_patients: [],
+              appointment_doctors: [],
+            })),
+          } as any;
+        }
+      }
+
+      // Falhas críticas: sem usuários ou agendamentos não dá para operar.
       if (usersRes.error) throw usersRes.error;
       if (aptRes.error) throw aptRes.error;
-      if (finRes.error) throw finRes.error;
-      if (medRes.error) throw medRes.error;
-      if (recRes.error) throw recRes.error;
+
+      // Falhas não críticas não devem impedir atualização da agenda.
+      if (finRes.error) {
+        console.warn("loadAll financial_records non-fatal:", finRes.error.message);
+      }
+      if (medRes.error) {
+        console.warn("loadAll medical_records non-fatal:", medRes.error.message);
+      }
+      if (recRes.error) {
+        console.warn("loadAll appointment_recurrences non-fatal:", recRes.error.message);
+      }
 
       setUsers(usersRes.data ?? []);
       const baseAppointments = (aptRes.data ?? []).map(normalizeAppointment);
       setAppointments(expandWeeklyAppointments(baseAppointments));
-      setFinancialRecords(finRes.data ?? []);
-      setMedicalRecords(medRes.data ?? []);
-      setRecurrences(recRes.data ?? []);
+      setFinancialRecords(finRes.error ? [] : finRes.data ?? []);
+      setMedicalRecords(medRes.error ? [] : medRes.data ?? []);
+      setRecurrences(recRes.error ? [] : recRes.data ?? []);
 
       // garante sempre array
       setServices((prev) => (Array.isArray(prev) ? prev : []));
@@ -520,9 +606,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const cachePayload = {
           users: usersRes.data ?? [],
           appointments: aptRes.data ?? [],
-          financialRecords: finRes.data ?? [],
-          medicalRecords: medRes.data ?? [],
-          recurrences: recRes.data ?? [],
+          financialRecords: finRes.error ? [] : finRes.data ?? [],
+          medicalRecords: medRes.error ? [] : medRes.data ?? [],
+          recurrences: recRes.error ? [] : recRes.data ?? [],
           services: [],
           savedAt: new Date().toISOString(),
         };
@@ -579,31 +665,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (loading) return;
-    const cleanedKey = "justifications-cleanup-applied";
-    if (localStorage.getItem(cleanedKey) === "1") return;
-    const targets = appointments.filter(
-      (apt) =>
-        typeof apt.notes === "string" &&
-        apt.notes.toLowerCase().includes("falta justificada")
-    );
-    if (!targets.length) {
-      localStorage.setItem(cleanedKey, "1");
-      return;
-    }
-    const run = async () => {
-      await Promise.all(
-        targets.map((apt) =>
-          supabase
-            .from("appointments")
-            .update({ status: "pendente", notes: null })
-            .eq("id", apt.id)
-        )
-      );
-      localStorage.setItem(cleanedKey, "1");
-      await loadAll();
+
+    const recoveryKey = "recovery-recurring-overrides-v1";
+    if (localStorage.getItem(recoveryKey) === "1") return;
+
+    const runRecovery = async () => {
+      try {
+        const { data: blockedRows, error: blockedErr } = await supabase
+          .from("appointments")
+          .select("id")
+          .like("notes", `${RECURRENCE_OVERRIDE_NOTE_PREFIX}%`);
+
+        if (blockedErr) throw blockedErr;
+        const ids = (blockedRows || []).map((r: any) => r.id).filter(Boolean);
+
+        if (!ids.length) {
+          localStorage.setItem(recoveryKey, "1");
+          return;
+        }
+
+        // remove possíveis vínculos financeiros gerados por versões anteriores
+        await supabase.from("financial_records").delete().in("appointment_id", ids);
+        await supabase.from("appointments").delete().in("id", ids);
+
+        localStorage.setItem(recoveryKey, "1");
+        await loadAll();
+        toast.success(`Recuperação concluída: ${ids.length} bloqueios removidos.`);
+      } catch (err: any) {
+        console.error("recovery recurring overrides:", err?.message || err);
+        toast.error(err?.message || "Erro ao recuperar agendamentos ocultos.");
+      }
     };
-    run();
-  }, [appointments, loading, loadAll]);
+
+    runRecovery();
+  }, [loading, loadAll]);
+
+  // Mantém a agenda fiel ao banco: sem mutações automáticas de status em background.
 
   /* ======================================================
      REALTIME
@@ -774,64 +871,87 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         doctor_id: data.doctor_id || doctorIds[0],
         date: data.date,
         time: normalizeTimeToHHMM(data.time),
-        status: data.status,
+        status: normalizeAppointmentStatusForDb(data.status),
         type: data.type,
         notes: data.notes ?? null,
         price: Number(data.price) || 0,
+        is_fixed: data.is_fixed === true,
       };
 
       if (!base.patient_id) throw new Error("patient_id obrigatório");
       if (!base.doctor_id) throw new Error("doctor_id obrigatório");
 
-      const { data: apt, error } = await supabase
-        .from("appointments")
-        .insert([base])
-        .select()
-        .single();
+      let apt: any = null;
+      let insertError: any = null;
+      const statusCandidates = buildStatusCandidates(base.status);
+      for (const candidate of statusCandidates) {
+        const payload = { ...base, status: candidate };
+        const { data: inserted, error } = await supabase
+          .from("appointments")
+          .insert([payload])
+          .select()
+          .single();
+        if (!error && inserted) {
+          apt = inserted;
+          if (candidate === "agendado" || candidate === "pendente") {
+            pendingStatusRef.current = candidate;
+          }
+          break;
+        }
+        insertError = error;
+        if (!isAppointmentStatusConstraintError(error)) {
+          break;
+        }
+      }
+      if (!apt) throw insertError;
 
-      if (error || !apt) throw error;
+      const isRecurrenceOverride = isInternalRecurrenceNote(base.notes);
 
-      // cria registro financeiro pendente (inclui paciente/responsável)
-      const patientName = getUserById(base.patient_id)?.name || "Paciente";
-      const { data: patientRow } = await supabase
-        .from("patients")
-        .select("responsavel")
-        .eq("user_id", base.patient_id)
-        .maybeSingle();
-      const responsavel = patientRow?.responsavel ? ` | Responsável: ${patientRow.responsavel}` : "";
-      await supabase.from("financial_records").insert([
-        {
-          type: "receita",
-          amount: Number(base.price) || 0,
-          description: `Consulta: ${base.type} | Paciente: ${patientName}${responsavel}`,
-          category: "Consulta",
-          date: base.date,
-          appointment_id: apt.id,
-          status: "pendente",
-        },
-      ]);
+      if (!isRecurrenceOverride) {
+        // cria registro financeiro pendente (inclui paciente/responsável)
+        const patientName = getUserById(base.patient_id)?.name || "Paciente";
+        const { data: patientRow } = await supabase
+          .from("patients")
+          .select("responsavel")
+          .eq("user_id", base.patient_id)
+          .maybeSingle();
+        const responsavel = patientRow?.responsavel ? ` | Responsável: ${patientRow.responsavel}` : "";
+        await supabase.from("financial_records").insert([
+          {
+            type: "receita",
+            amount: Number(base.price) || 0,
+            description: `Consulta: ${base.type} | Paciente: ${patientName}${responsavel}`,
+            category: "Consulta",
+            date: base.date,
+            appointment_id: apt.id,
+            status: "pendente",
+          },
+        ]);
+      }
 
       // 🔥 salva relações (multi)
       await trySyncAppointmentPatients(apt.id, patientIds);
       await trySyncAppointmentDoctors(apt.id, doctorIds);
 
       await loadAll();
-      const { doctorsList, doctorMessage } = buildAppointmentMessages({
-        type: "create",
-        appointment: apt as Appointment,
-        patientIds,
-        doctorIds,
-      });
-      doctorsList.forEach((d) => {
-        logDoctorNotification(d.id, "create", doctorMessage, apt.id);
-      });
-      notifyAppointmentWhatsApp({
-        type: "create",
-        appointment: apt as Appointment,
-        patientIds,
-        doctorIds,
-      });
-      sendPushNotification({ type: "create", appointment: apt as Appointment });
+      if (!isRecurrenceOverride) {
+        const { doctorsList, doctorMessage } = buildAppointmentMessages({
+          type: "create",
+          appointment: apt as Appointment,
+          patientIds,
+          doctorIds,
+        });
+        doctorsList.forEach((d) => {
+          logDoctorNotification(d.id, "create", doctorMessage, apt.id);
+        });
+        notifyAppointmentWhatsApp({
+          type: "create",
+          appointment: apt as Appointment,
+          patientIds,
+          doctorIds,
+        });
+        sendPushNotification({ type: "create", appointment: apt as Appointment });
+      }
       return true;
     } catch (err: any) {
       console.error("addAppointment:", err?.message || err);
@@ -847,10 +967,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const target = appointments.find((a) => a.id === id);
       if (target?.is_virtual || id.includes("::")) {
-        toast.error(
-          "Este é um agendamento recorrente. Edite o agendamento original."
-        );
-        return false;
+        const [sourceIdFromVirtual, dateFromVirtual] = String(id).split("::");
+        const sourceId = sourceIdFromVirtual || target?.recurrence_source_id || target?.id;
+        const source =
+          appointments.find((a) => a.id === sourceId) ||
+          (target ? { ...target, id: sourceId } : null);
+
+        const sourceDate = dateFromVirtual || source?.date || target?.date || "";
+        const sourceTime = normalizeTimeToHHMM(source?.time || target?.time || "");
+        const sourcePatientId = source?.patient_id || target?.patient_id || "";
+        const sourceDoctorId = source?.doctor_id || target?.doctor_id || "";
+
+        if (!sourceId || !sourceDate || !sourceTime || !sourcePatientId || !sourceDoctorId) {
+          toast.error("Não foi possível identificar a ocorrência da recorrência.");
+          return false;
+        }
+        // Regra estável e não-destrutiva:
+        // editar ocorrência virtual altera o status/dados do agendamento base
+        // sem forçar data/hora da ocorrência virtual no registro base.
+        const {
+          date: _virtualDate,
+          time: _virtualTime,
+          ...safeData
+        } = (data as any) || {};
+        void _virtualDate;
+        void _virtualTime;
+
+        return await updateAppointment(sourceId, {
+          ...safeData,
+          patient_id: sourcePatientId,
+          doctor_id: sourceDoctorId,
+          patient_ids:
+            (safeData as any).patient_ids ?? source?.patient_ids ?? [sourcePatientId],
+          doctor_ids:
+            (safeData as any).doctor_ids ?? source?.doctor_ids ?? [sourceDoctorId],
+        } as any);
       }
       const previous = appointments.find((a) => a.id === id) || null;
       const patientIds = data.patient_ids
@@ -866,17 +1017,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } = data as any;
 
       const patch: any = { ...rest };
+      const desiredStatus =
+        patch.status !== undefined
+          ? normalizeAppointmentStatusForDb(patch.status)
+          : undefined;
 
       if (typeof patch.time === "string") {
         patch.time = normalizeTimeToHHMM(patch.time);
       }
 
-      const { error } = await supabase
-        .from("appointments")
-        .update(patch)
-        .eq("id", id);
+      let updatedRows: Array<{ id: string; status?: AppointmentStatus }> | null =
+        null;
+      let updateError: any = null;
+      const statusCandidates =
+        desiredStatus !== undefined ? buildStatusCandidates(desiredStatus) : [];
+      const tries = statusCandidates.length ? statusCandidates : [undefined];
 
-      if (error) throw error;
+      for (const candidate of tries) {
+        const patchToSend: any = { ...patch };
+        if (candidate !== undefined) {
+          patchToSend.status = candidate;
+        } else if ("status" in patchToSend) {
+          delete patchToSend.status;
+        }
+
+        const { data, error } = await supabase
+          .from("appointments")
+          .update(patchToSend)
+          .eq("id", id)
+          .select("id,status");
+
+        if (!error && data && data.length > 0) {
+          updatedRows = data as any;
+          if (candidate === "agendado" || candidate === "pendente") {
+            pendingStatusRef.current = candidate;
+          }
+          patch.status = (data[0] as any).status;
+          break;
+        }
+
+        updateError = error;
+        if (!isAppointmentStatusConstraintError(error)) {
+          break;
+        }
+      }
+
+      if (updateError && !updatedRows) throw updateError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error("Agendamento não encontrado para atualização.");
+      }
+
+      // Corrige dados duplicados no mesmo slot (mesmo paciente+médico+data+hora),
+      // evitando que a UI continue exibindo um "clone" com status antigo.
+      if (patch.status !== undefined) {
+        const slotDate = patch.date || previous?.date;
+        const slotTime = patch.time || previous?.time;
+        const slotPatientId = patch.patient_id || previous?.patient_id;
+        const slotDoctorId = patch.doctor_id || previous?.doctor_id;
+
+        if (slotDate && slotTime && slotPatientId && slotDoctorId) {
+          const { data: sameSlotRows, error: sameSlotErr } = await supabase
+            .from("appointments")
+            .select("id,notes")
+            .eq("date", slotDate)
+            .eq("time", slotTime)
+            .eq("patient_id", slotPatientId)
+            .eq("doctor_id", slotDoctorId)
+            .neq("id", id);
+
+          if (!sameSlotErr && sameSlotRows?.length) {
+            const duplicateIds = sameSlotRows
+              .filter((row: any) => {
+                const note = String(row?.notes || "");
+                return !note.startsWith(RECURRENCE_OVERRIDE_NOTE_PREFIX);
+              })
+              .map((row: any) => row.id)
+              .filter(Boolean);
+
+            if (duplicateIds.length) {
+              await supabase
+                .from("appointments")
+                .update({ status: patch.status })
+                .in("id", duplicateIds);
+            }
+          }
+        }
+      }
 
       // atualiza financeiro quando houver mudança relevante
       if (patch.price !== undefined || patch.status !== undefined) {
@@ -895,13 +1121,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (patientIds) await trySyncAppointmentPatients(id, patientIds);
       if (doctorIds) await trySyncAppointmentDoctors(id, doctorIds);
 
+      // Atualização otimista local: garante que a agenda reflita o novo status
+      // imediatamente, mesmo se houver atraso/falha em recarga posterior.
+      setAppointments((prev) =>
+        prev.map((apt) => {
+          if (apt.id !== id) return apt;
+          return {
+            ...apt,
+            ...(patch as Partial<Appointment>),
+            patient_ids: patientIds ?? apt.patient_ids,
+            doctor_ids: doctorIds ?? apt.doctor_ids,
+            status:
+              (patch.status as AppointmentStatus | undefined) ?? apt.status,
+            time:
+              typeof patch.time === "string" && patch.time
+                ? patch.time
+                : apt.time,
+          };
+        })
+      );
+
       await loadAll();
       const effectivePatientIds =
         patientIds ?? previous?.patient_ids ?? [previous?.patient_id || ""];
       const effectiveDoctorIds =
         doctorIds ?? previous?.doctor_ids ?? [previous?.doctor_id || ""];
       const nextStatus =
-        (patch.status as AppointmentStatus) || previous?.status || "pendente";
+        (patch.status as AppointmentStatus) || previous?.status || "agendado";
       const nextDate = patch.date || previous?.date || "";
       const nextTime = patch.time || previous?.time || "";
 

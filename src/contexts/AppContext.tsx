@@ -186,6 +186,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const usersRef = React.useRef<User[]>([]);
+  const appointmentsRef = React.useRef<Appointment[]>([]);
+  const optimisticPendingRef = React.useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
+  useEffect(() => {
+    appointmentsRef.current = appointments;
+  }, [appointments]);
 
   const doctors = users.filter((u) => u.role === "medico");
   const patients = users.filter((u) => u.role === "paciente");
@@ -195,8 +206,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const normalizeTimeToHHMM = (t?: string | null) => {
     if (!t) return "";
-    const m = t.match(/(\d{2}):(\d{2})/);
-    return m ? `${m[1]}:${m[2]}` : "";
+    const raw = String(t).trim();
+    const m = raw.match(/(\d{1,2}):(\d{2})/);
+    if (!m) return "";
+    return `${m[1].padStart(2, "0")}:${m[2]}`;
   };
 
   const normalizePhone = (value?: string | null) => {
@@ -273,6 +286,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     throw lastError || new Error("Não foi possível deixar os agendamentos pendentes.");
+  };
+
+  const removeDuplicateAppointments = async () => {
+    const { data, error } = await supabase
+      .from("appointments")
+      .select("id,date,time,doctor_id,patient_id,created_at,notes");
+
+    if (error) throw error;
+
+    const rows = (data ?? []).filter((apt: any) => {
+      const note = String(apt?.notes || "");
+      return (
+        !note.startsWith(RECURRENCE_OVERRIDE_NOTE_PREFIX) &&
+        !note.startsWith(RECURRENCE_INSTANCE_NOTE_PREFIX)
+      );
+    });
+
+    const groups = new Map<string, any[]>();
+    rows.forEach((apt: any) => {
+      const key = `${apt.date}|${normalizeTimeToHHMM(apt.time)}|${apt.doctor_id}|${apt.patient_id}`;
+      const list = groups.get(key) || [];
+      list.push(apt);
+      groups.set(key, list);
+    });
+
+    const toDelete: string[] = [];
+    groups.forEach((list) => {
+      if (list.length <= 1) return;
+      const sorted = list
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.created_at || 0).getTime() -
+            new Date(b.created_at || 0).getTime()
+        );
+      // mantém o mais antigo, remove os demais
+      toDelete.push(...sorted.slice(1).map((row) => row.id).filter(Boolean));
+    });
+
+    if (!toDelete.length) return 0;
+
+    await supabase.from("appointment_patients").delete().in("appointment_id", toDelete);
+    await supabase.from("appointment_doctors").delete().in("appointment_id", toDelete);
+    await supabase.from("financial_records").delete().in("appointment_id", toDelete);
+    await supabase.from("appointments").delete().in("id", toDelete);
+
+    return toDelete.length;
   };
 
   const formatDateTime = (date?: string, time?: string) => {
@@ -545,6 +605,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const fetchAllAppointments = async () => {
+    const pageSize = 1000;
+    const allRows: any[] = [];
+    let from = 0;
+
+    while (true) {
+      let chunkRes = await supabase
+        .from("appointments")
+        .select(
+          `
+            *,
+            appointment_patients(patient_id),
+            appointment_doctors(doctor_id)
+          `
+        )
+        .order("date", { ascending: true })
+        .order("time", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (chunkRes.error) {
+        console.warn(
+          "fetchAllAppointments with relations failed, trying fallback:",
+          chunkRes.error.message
+        );
+
+        const fallbackRes = await supabase
+          .from("appointments")
+          .select("*")
+          .order("date", { ascending: true })
+          .order("time", { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (fallbackRes.error) {
+          throw fallbackRes.error;
+        }
+
+        const fallbackRows = (fallbackRes.data ?? []).map((a: any) => ({
+          ...a,
+          appointment_patients: [],
+          appointment_doctors: [],
+        }));
+        allRows.push(...fallbackRows);
+
+        if ((fallbackRows?.length ?? 0) < pageSize) break;
+        from += pageSize;
+        continue;
+      }
+
+      const chunk = chunkRes.data ?? [];
+      allRows.push(...chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allRows;
+  };
+
   /* ======================================================
      LOAD ALL (FONTE ÚNICA)
 ====================================================== */
@@ -562,48 +679,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("appointment_recurrences").select("*"),
       ]);
 
-      let aptRes = await supabase
-        .from("appointments")
-        .select(
-          `
-            *,
-            appointment_patients(patient_id),
-            appointment_doctors(doctor_id)
-          `
-        )
-        .gte("date", "2026-01-01")
-        .order("date", { ascending: true })
-        .order("time", { ascending: true });
-
-      // Fallback robusto: se falhar por relação/permissão das tabelas relacionais,
-      // carrega agendamentos sem joins para não ficar preso em cache antigo.
-      if (aptRes.error) {
-        console.warn(
-          "loadAll appointments with relations failed, trying fallback:",
-          aptRes.error.message
-        );
-        const basicAptRes = await supabase
-          .from("appointments")
-          .select("*")
-          .gte("date", "2026-01-01")
-          .order("date", { ascending: true })
-          .order("time", { ascending: true });
-
-        if (!basicAptRes.error && basicAptRes.data) {
-          aptRes = {
-            ...basicAptRes,
-            data: basicAptRes.data.map((a: any) => ({
-              ...a,
-              appointment_patients: [],
-              appointment_doctors: [],
-            })),
-          } as any;
-        }
-      }
+      const allAppointmentsRows = await fetchAllAppointments();
 
       // Falhas críticas: sem usuários ou agendamentos não dá para operar.
       if (usersRes.error) throw usersRes.error;
-      if (aptRes.error) throw aptRes.error;
+      if (!Array.isArray(allAppointmentsRows)) {
+        throw new Error("Falha ao carregar agendamentos.");
+      }
 
       // Falhas não críticas não devem impedir atualização da agenda.
       if (finRes.error) {
@@ -617,8 +699,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUsers(usersRes.data ?? []);
-      const baseAppointments = (aptRes.data ?? []).map(normalizeAppointment);
-      setAppointments(expandWeeklyAppointments(baseAppointments));
+      const baseAppointments = allAppointmentsRows.map(normalizeAppointment);
+
+      const now = Date.now();
+      const serverIds = new Set(baseAppointments.map((apt) => apt.id));
+      serverIds.forEach((id) => optimisticPendingRef.current.delete(id));
+
+      const localBase = appointmentsRef.current.filter(
+        (apt) => !apt.is_virtual && !String(apt.id || "").includes("::")
+      );
+
+      const carryFromOptimistic = localBase.filter((apt) => {
+        const createdAt = optimisticPendingRef.current.get(apt.id);
+        if (!createdAt) return false;
+        const fresh = now - createdAt <= 2 * 60 * 1000;
+        if (!fresh) {
+          optimisticPendingRef.current.delete(apt.id);
+          return false;
+        }
+        return !serverIds.has(apt.id);
+      });
+
+      const mergedBase = [
+        ...baseAppointments,
+        ...carryFromOptimistic.filter(
+          (apt) => !baseAppointments.some((serverApt) => serverApt.id === apt.id)
+        ),
+      ];
+
+      setAppointments(expandWeeklyAppointments(mergedBase));
       setFinancialRecords(finRes.error ? [] : finRes.data ?? []);
       setMedicalRecords(medRes.error ? [] : medRes.data ?? []);
       setRecurrences(recRes.error ? [] : recRes.data ?? []);
@@ -629,7 +738,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         const cachePayload = {
           users: usersRes.data ?? [],
-          appointments: aptRes.data ?? [],
+          appointments: allAppointmentsRows ?? [],
           financialRecords: finRes.error ? [] : finRes.data ?? [],
           medicalRecords: medRes.error ? [] : medRes.data ?? [],
           recurrences: recRes.error ? [] : recRes.data ?? [],
@@ -643,7 +752,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         try {
           const cachedRaw = localStorage.getItem(CACHE_KEY);
-          if (cachedRaw) {
+          const hasLiveState =
+            usersRef.current.length > 0 || appointmentsRef.current.length > 0;
+
+          if (cachedRaw && !hasLiveState) {
             const cached = JSON.parse(cachedRaw);
             setUsers(cached.users ?? []);
             const baseAppointments = (cached.appointments ?? []).map(
@@ -722,6 +834,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     runRecovery();
+  }, [loading, loadAll]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+
+    const dedupeKey = "appointments-dedupe-v1";
+    if (localStorage.getItem(dedupeKey) === "1") return;
+
+    const run = async () => {
+      try {
+        const removed = await removeDuplicateAppointments();
+        localStorage.setItem(dedupeKey, "1");
+        if (removed > 0) {
+          await loadAll();
+          toast.success(`${removed} agendamento(s) duplicado(s) removido(s).`);
+        }
+      } catch (err: any) {
+        console.error("removeDuplicateAppointments:", err?.message || err);
+        toast.error(err?.message || "Erro ao remover agendamentos duplicados.");
+      }
+    };
+
+    run();
   }, [loading, loadAll]);
 
   useEffect(() => {
@@ -962,7 +1098,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .eq("user_id", base.patient_id)
           .maybeSingle();
         const responsavel = patientRow?.responsavel ? ` | Responsável: ${patientRow.responsavel}` : "";
-        await supabase.from("financial_records").insert([
+        const { error: financialInsertError } = await supabase
+          .from("financial_records")
+          .insert([
           {
             type: "receita",
             amount: Number(base.price) || 0,
@@ -973,11 +1111,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             status: "pendente",
           },
         ]);
+        if (financialInsertError) {
+          console.warn(
+            "addAppointment financial_records non-fatal:",
+            financialInsertError?.message || financialInsertError
+          );
+        }
       }
 
       // 🔥 salva relações (multi)
-      await trySyncAppointmentPatients(apt.id, patientIds);
-      await trySyncAppointmentDoctors(apt.id, doctorIds);
+      try {
+        if (patientIds.length) {
+          await trySyncAppointmentPatients(apt.id, patientIds);
+        }
+        if (doctorIds.length) {
+          await trySyncAppointmentDoctors(apt.id, doctorIds);
+        }
+      } catch (syncErr: any) {
+        console.warn(
+          "addAppointment relation sync non-fatal:",
+          syncErr?.message || syncErr
+        );
+      }
+
+      // Atualização otimista local para evitar "salvou, mas não aparece"
+      // quando houver atraso/erro temporário no reload.
+      const optimistic = normalizeAppointment({
+        ...apt,
+        appointment_patients: patientIds.map((patient_id) => ({ patient_id })),
+        appointment_doctors: doctorIds.map((doctor_id) => ({ doctor_id })),
+      });
+      optimisticPendingRef.current.set(optimistic.id, Date.now());
+      setAppointments((prev) => {
+        const base = prev.filter(
+          (item) => !item.is_virtual && !String(item.id || "").includes("::")
+        );
+        const nextBase = [...base.filter((item) => item.id !== optimistic.id), optimistic];
+        return expandWeeklyAppointments(nextBase);
+      });
 
       await loadAll();
       if (!isRecurrenceOverride) {

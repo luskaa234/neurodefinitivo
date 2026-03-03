@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,10 +92,10 @@ const normalizeTime = (time?: string) => {
   if (!time) return "";
 
   // pega apenas HH:mm independente do formato
-  const match = time.match(/(\d{2}):(\d{2})/);
+  const match = String(time).trim().match(/(\d{1,2}):(\d{2})/);
   if (!match) return "";
 
-  return `${match[1]}:${match[2]}`;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
 };
 
 /* ======================================================
@@ -267,7 +267,6 @@ export default function ExcelScheduleGrid() {
     start: "08:00",
     end: "21:00",
   });
-  const dedupeRunningRef = useRef(false);
 
   // filtros
   const [search, setSearch] = useState("");
@@ -400,7 +399,20 @@ export default function ExcelScheduleGrid() {
     return Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
-  const timeSlots = useMemo(() => getDefaultTimeSlots(), []);
+  const timeSlots = useMemo(() => {
+    const defaultSlots = getDefaultTimeSlots();
+    const weekStartStr = toDateStr(currentWeekStart);
+    const weekEndStr = toDateStr(addDays(currentWeekStart, 5));
+
+    const extraSlots = (appointments as unknown as AptLike[])
+      .filter((apt) => apt.date >= weekStartStr && apt.date <= weekEndStr)
+      .map((apt) => normalizeTime(apt.time))
+      .filter(Boolean);
+
+    const merged = Array.from(new Set([...defaultSlots, ...extraSlots]));
+    merged.sort((a, b) => a.localeCompare(b));
+    return merged;
+  }, [appointments, currentWeekStart]);
 
   const isSlotAvailable = (dayIndex: number, time: string) => {
     if (selectedDoctorId === "all") return true;
@@ -552,7 +564,16 @@ export default function ExcelScheduleGrid() {
         : await addAppointment(payload as any);
 
     if (ok) {
-      await reloadAll();
+      const savedDate = parseDateStr(form.date);
+      if (savedDate) {
+        setCurrentWeekStart(getWeekStart(savedDate));
+      }
+      setSelectedDoctorId("all");
+      setFilterPatient("all");
+      setFilterDoctor("all");
+      setFilterStatus("all");
+      setFilterDate("");
+      setSearch("");
       if (isReschedule && selected?.id) {
         resolveSchedulerNotification(selected.id);
       }
@@ -963,42 +984,6 @@ export default function ExcelScheduleGrid() {
     };
     loadSchedule();
   }, [selectedDoctorId]);
-
-  useEffect(() => {
-    if (dedupeRunningRef.current) return;
-    if (!appointments || (appointments as unknown as AptLike[]).length === 0) return;
-    if (typeof window !== "undefined" && localStorage.getItem("dedupe-scan-done") === "1") {
-      return;
-    }
-
-    const baseAppointments = (appointments as unknown as AptLike[]).filter(
-      (apt) => !apt.is_virtual && !String(apt.id || "").includes("::")
-    );
-
-    const groups = new Map<string, AptLike[]>();
-    baseAppointments.forEach((apt) => {
-      const key = `${apt.date}|${normalizeTime(apt.time)}|${apt.doctor_id}|${apt.patient_id}`;
-      const list = groups.get(key) || [];
-      list.push(apt);
-      groups.set(key, list);
-    });
-
-    const duplicates = Array.from(groups.values()).filter((list) => list.length > 1);
-    if (duplicates.length === 0) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("dedupe-scan-done", "1");
-      }
-      return;
-    }
-
-    const duplicatedRows = duplicates.reduce((acc, list) => acc + (list.length - 1), 0);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("dedupe-scan-done", "1");
-    }
-    console.warn(`Agendamentos duplicados detectados: ${duplicatedRows}. Nenhuma exclusão automática foi executada.`);
-    toast.warning(`Encontrados ${duplicatedRows} agendamentos duplicados. Nenhum registro foi apagado automaticamente.`);
-  }, [appointments, reloadAll]);
-
 
   /* ======================================================
      UI

@@ -59,6 +59,12 @@ import {
 ======================================================================== */
 const normalizePhone = (v: string) => v.replace(/\D/g, "");
 const ensureBR = (v: string) => (v.startsWith("55") ? v : `55${v}`);
+const normalizeTime = (value?: string | null) => {
+  if (!value) return "00:00";
+  const m = String(value).trim().match(/(\d{1,2}):(\d{2})/);
+  if (!m) return "00:00";
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+};
 
 const joinNames = (names: string[]) => {
   if (names.length === 1) return names[0];
@@ -116,8 +122,8 @@ export function WhatsAppModule() {
     return [...appointments]
       .sort(
         (a, b) =>
-          new Date(`${a.date}T${a.time}`).getTime() -
-          new Date(`${b.date}T${b.time}`).getTime()
+          new Date(`${a.date}T${normalizeTime(a.time)}:00`).getTime() -
+          new Date(`${b.date}T${normalizeTime(b.time)}:00`).getTime()
       )
       .filter((a) => {
         const pats = patients.filter(
@@ -146,7 +152,8 @@ export function WhatsAppModule() {
   ) => {
     const serviceLabel = apt.type ? `com ${apt.type}` : "com atendimento";
     const dateLabel = formatDateBR(apt.date);
-    const base = `Olá, bom dia, tudo bem?\n${patientName} você tem atendimento agendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+    const timeLabel = normalizeTime(apt.time);
+    const base = `Olá, bom dia, tudo bem?\n${patientName} você tem atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorsText}).`;
 
     if (type === "confirm") {
       return `${base}\nPosso confirmar a presença hoje?`;
@@ -157,11 +164,11 @@ export function WhatsAppModule() {
     }
 
     if (type === "cancel") {
-      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento agendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}) foi cancelado.`;
+      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento agendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorsText}) foi cancelado.`;
     }
 
     if (type === "reschedule") {
-      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento foi reagendado para o dia ${dateLabel}, às ${apt.time}, ${serviceLabel} (${doctorsText}).`;
+      return `Olá, bom dia, tudo bem?\n${patientName} seu atendimento foi reagendado para o dia ${dateLabel}, às ${timeLabel}, ${serviceLabel} (${doctorsText}).`;
     }
 
     const together =
@@ -438,7 +445,7 @@ export function WhatsAppModule() {
                           {joinNames(pats.map((p) => p.name))}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {a.date} • {a.time}
+                          {a.date} • {normalizeTime(a.time)}
                         </div>
                       </div>
                     );

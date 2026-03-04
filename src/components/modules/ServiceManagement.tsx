@@ -32,7 +32,7 @@ type ServiceFormData = z.infer<typeof serviceSchema>;
 interface Service {
   id: string;
   name: string;
-  description?: string;
+  description: string;
   price: number;
   duration: number;
   category: string;
@@ -115,7 +115,7 @@ const onSubmitEdit = async (data: ServiceFormData) => {
   const handleEdit = (service: Service) => {
     setEditingService(service);
     setValueEdit('name', service.name);
-    setValueEdit('description', service.description || '');
+    setValueEdit('description', service.description);
     setValueEdit('price', service.price);
     setValueEdit('duration', service.duration);
     setValueEdit('category', service.category);

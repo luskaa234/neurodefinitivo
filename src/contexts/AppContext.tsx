@@ -100,7 +100,11 @@ export interface Service {
   id: string;
   name: string;
   duration: number;
-  price?: number;
+  price: number;
+  description: string;
+  category: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 /* ======================================================
@@ -126,6 +130,11 @@ interface AppContextType {
     data: Omit<User, "id" | "created_at"> & { password?: string },
     password?: string
   ) => Promise<boolean>;
+  updateUser: (
+    id: string,
+    data: Partial<User> & { password?: string }
+  ) => Promise<boolean>;
+  deleteUser: (id: string) => Promise<boolean>;
 
   // ⚠️ Aqui aceitamos patient_ids/doctor_ids opcionais para multi seleção
   addAppointment: (
@@ -153,6 +162,12 @@ interface AppContextType {
     data: Partial<FinancialRecord>
   ) => Promise<boolean>;
   deleteFinancialRecord: (id: string) => Promise<boolean>;
+
+  addService: (
+    data: Omit<Service, "id" | "created_at">
+  ) => Promise<boolean>;
+  updateService: (id: string, data: Partial<Service>) => Promise<boolean>;
+  deleteService: (id: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -186,9 +201,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const SERVICES_KEY = "neuro-services-v1";
   const usersRef = React.useRef<User[]>([]);
   const appointmentsRef = React.useRef<Appointment[]>([]);
   const optimisticPendingRef = React.useRef<Map<string, number>>(new Map());
+  const isLoadingAllRef = React.useRef(false);
+  const pendingLoadAllRef = React.useRef(false);
+  const isLoadingAppointmentsOnlyRef = React.useRef(false);
+  const pendingAppointmentsOnlyRef = React.useRef(false);
+  const realtimeLoadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   useEffect(() => {
     usersRef.current = users;
@@ -197,6 +220,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     appointmentsRef.current = appointments;
   }, [appointments]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(SERVICES_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      setServices(
+        parsed.map((s: any) => ({
+          id: String(s.id || crypto.randomUUID()),
+          name: String(s.name || "Serviço"),
+          duration: Number(s.duration) || 60,
+          price: Number(s.price) || 0,
+          description: s.description ? String(s.description) : "",
+          category: s.category ? String(s.category) : "Outros",
+          is_active: s.is_active !== false,
+          created_at: s.created_at ? String(s.created_at) : new Date().toISOString(),
+        }))
+      );
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   const doctors = users.filter((u) => u.role === "medico");
   const patients = users.filter((u) => u.role === "paciente");
@@ -216,8 +263,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!value) return "";
     const digits = value.replace(/\D/g, "");
     if (!digits) return "";
-    if (digits.startsWith("55")) return digits;
-    return `55${digits}`;
+    if (digits.startsWith("55")) {
+      return digits.length >= 12 ? digits : "";
+    }
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+    return "";
   };
 
   const getUserById = (id?: string | null) =>
@@ -533,6 +585,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const RECURRING_END_DATE = "2026-12-31";
+  const RECURRENCE_EXPAND_DAYS = 56;
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -565,7 +618,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const today = toDateOnly(new Date());
     const fixedEnd = parseDate(RECURRING_END_DATE);
-    const horizon = fixedEnd && fixedEnd > today ? fixedEnd : addDays(today, 7);
+    const maxWindowEnd = addDays(today, RECURRENCE_EXPAND_DAYS);
+    const fixedOrDefault = fixedEnd && fixedEnd > today ? fixedEnd : addDays(today, 7);
+    const horizon = fixedOrDefault < maxWindowEnd ? fixedOrDefault : maxWindowEnd;
     const existingKeys = new Set(base.map((apt) => makeAppointmentKey(apt)));
     const visibleBase = base.filter((apt) => !isRecurrenceOverride(apt));
     const expanded: Appointment[] = [...visibleBase];
@@ -666,39 +721,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
      LOAD ALL (FONTE ÚNICA)
 ====================================================== */
 
-  const loadAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const [usersRes, finRes, medRes, recRes] = await Promise.all([
-        supabase.from("users").select("*"),
-
-        supabase.from("financial_records").select("*"),
-        supabase.from("medical_records").select("*"),
-        supabase.from("appointment_recurrences").select("*"),
-      ]);
-
-      const allAppointmentsRows = await fetchAllAppointments();
-
-      // Falhas críticas: sem usuários ou agendamentos não dá para operar.
-      if (usersRes.error) throw usersRes.error;
-      if (!Array.isArray(allAppointmentsRows)) {
-        throw new Error("Falha ao carregar agendamentos.");
-      }
-
-      // Falhas não críticas não devem impedir atualização da agenda.
-      if (finRes.error) {
-        console.warn("loadAll financial_records non-fatal:", finRes.error.message);
-      }
-      if (medRes.error) {
-        console.warn("loadAll medical_records non-fatal:", medRes.error.message);
-      }
-      if (recRes.error) {
-        console.warn("loadAll appointment_recurrences non-fatal:", recRes.error.message);
-      }
-
-      setUsers(usersRes.data ?? []);
+  const applyAppointmentsRows = useCallback(
+    (allAppointmentsRows: any[]) => {
       const baseAppointments = allAppointmentsRows.map(normalizeAppointment);
 
       const now = Date.now();
@@ -728,6 +752,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ];
 
       setAppointments(expandWeeklyAppointments(mergedBase));
+    },
+    []
+  );
+
+  const performLoadAll = useCallback(async () => {
+    let coreLoaded = false;
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [usersRes, allAppointmentsRows] = await Promise.all([
+        supabase.from("users").select("*"),
+        fetchAllAppointments(),
+      ]);
+
+      // Falhas críticas: sem usuários ou agendamentos não dá para operar.
+      if (usersRes.error) throw usersRes.error;
+      if (!Array.isArray(allAppointmentsRows)) {
+        throw new Error("Falha ao carregar agendamentos.");
+      }
+
+      setUsers(usersRes.data ?? []);
+      applyAppointmentsRows(allAppointmentsRows);
+      coreLoaded = true;
+      setLoading(false);
+
+      const [finRes, medRes, recRes] = await Promise.all([
+        supabase.from("financial_records").select("*"),
+        supabase.from("medical_records").select("*"),
+        supabase.from("appointment_recurrences").select("*"),
+      ]);
+
+      if (finRes.error) {
+        console.warn("loadAll financial_records non-fatal:", finRes.error.message);
+      }
+      if (medRes.error) {
+        console.warn("loadAll medical_records non-fatal:", medRes.error.message);
+      }
+      if (recRes.error) {
+        console.warn("loadAll appointment_recurrences non-fatal:", recRes.error.message);
+      }
+
       setFinancialRecords(finRes.error ? [] : finRes.data ?? []);
       setMedicalRecords(medRes.error ? [] : medRes.data ?? []);
       setRecurrences(recRes.error ? [] : recRes.data ?? []);
@@ -758,10 +824,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (cachedRaw && !hasLiveState) {
             const cached = JSON.parse(cachedRaw);
             setUsers(cached.users ?? []);
-            const baseAppointments = (cached.appointments ?? []).map(
-              normalizeAppointment
-            );
-            setAppointments(expandWeeklyAppointments(baseAppointments));
+            applyAppointmentsRows(cached.appointments ?? []);
             setFinancialRecords(cached.financialRecords ?? []);
             setMedicalRecords(cached.medicalRecords ?? []);
             setRecurrences(cached.recurrences ?? []);
@@ -777,17 +840,118 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setError(err?.message || "Erro ao carregar dados");
       }
     } finally {
-      setLoading(false);
+      if (!coreLoaded) setLoading(false);
     }
-  }, []);
+  }, [applyAppointmentsRows]);
+
+  const loadAll = useCallback(async () => {
+    if (isLoadingAllRef.current) {
+      pendingLoadAllRef.current = true;
+      return;
+    }
+
+    isLoadingAllRef.current = true;
+    try {
+      do {
+        pendingLoadAllRef.current = false;
+        await performLoadAll();
+      } while (pendingLoadAllRef.current);
+    } finally {
+      isLoadingAllRef.current = false;
+    }
+  }, [performLoadAll]);
+
+  const refreshInBackground = useCallback(() => {
+    void loadAll().catch((err: any) => {
+      console.error("background loadAll error:", err?.message || err);
+    });
+  }, [loadAll]);
+
+  const loadAppointmentsOnly = useCallback(async () => {
+    if (isLoadingAppointmentsOnlyRef.current) {
+      pendingAppointmentsOnlyRef.current = true;
+      return;
+    }
+
+    isLoadingAppointmentsOnlyRef.current = true;
+    try {
+      do {
+        pendingAppointmentsOnlyRef.current = false;
+        const allAppointmentsRows = await fetchAllAppointments();
+        if (Array.isArray(allAppointmentsRows)) {
+          applyAppointmentsRows(allAppointmentsRows);
+          if (typeof window !== "undefined") {
+            try {
+              const cachedRaw = localStorage.getItem(CACHE_KEY);
+              const cached = cachedRaw ? JSON.parse(cachedRaw) : {};
+              localStorage.setItem(
+                CACHE_KEY,
+                JSON.stringify({
+                  ...(cached || {}),
+                  appointments: allAppointmentsRows,
+                  savedAt: new Date().toISOString(),
+                })
+              );
+            } catch {
+              // non-fatal
+            }
+          }
+        }
+      } while (pendingAppointmentsOnlyRef.current);
+    } catch (err: any) {
+      console.error("loadAppointmentsOnly error:", err?.message || err);
+    } finally {
+      isLoadingAppointmentsOnlyRef.current = false;
+    }
+  }, [applyAppointmentsRows]);
+
+  const refreshAppointmentsInBackground = useCallback(() => {
+    void loadAppointmentsOnly();
+  }, [loadAppointmentsOnly]);
+
+  const scheduleRealtimeLoadAll = useCallback(() => {
+    if (realtimeLoadTimerRef.current) {
+      clearTimeout(realtimeLoadTimerRef.current);
+    }
+
+    realtimeLoadTimerRef.current = setTimeout(() => {
+      realtimeLoadTimerRef.current = null;
+      refreshAppointmentsInBackground();
+    }, 300);
+  }, [refreshAppointmentsInBackground]);
 
   /* ======================================================
      LOAD INICIAL
 ====================================================== */
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    if (typeof window === "undefined") return;
+    if (usersRef.current.length > 0 || appointmentsRef.current.length > 0) return;
+    try {
+      const cachedRaw = localStorage.getItem(CACHE_KEY);
+      if (!cachedRaw) return;
+      const cached = JSON.parse(cachedRaw);
+      if (!cached) return;
+
+      const cachedUsers = Array.isArray(cached.users) ? cached.users : [];
+      const cachedAppointments = Array.isArray(cached.appointments) ? cached.appointments : [];
+
+      if (cachedUsers.length) setUsers(cachedUsers);
+      if (cachedAppointments.length) {
+        applyAppointmentsRows(cachedAppointments);
+      }
+      setFinancialRecords(Array.isArray(cached.financialRecords) ? cached.financialRecords : []);
+      setMedicalRecords(Array.isArray(cached.medicalRecords) ? cached.medicalRecords : []);
+      setRecurrences(Array.isArray(cached.recurrences) ? cached.recurrences : []);
+      setServices(Array.isArray(cached.services) ? cached.services : []);
+    } catch (err: any) {
+      console.warn("cache hydrate non-fatal:", err?.message || err);
+    }
+  }, [applyAppointmentsRows]);
+
+  useEffect(() => {
+    refreshInBackground();
+  }, [refreshInBackground]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -894,24 +1058,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "appointments" },
-        loadAll
+        scheduleRealtimeLoadAll
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "appointment_patients" },
-        loadAll
+        scheduleRealtimeLoadAll
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "appointment_doctors" },
-        loadAll
+        scheduleRealtimeLoadAll
       )
       .subscribe();
 
     return () => {
+      if (realtimeLoadTimerRef.current) {
+        clearTimeout(realtimeLoadTimerRef.current);
+        realtimeLoadTimerRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
-  }, [loadAll]);
+  }, [scheduleRealtimeLoadAll]);
 
   /* ======================================================
      HELPERS RELACIONAIS (MULTI PACIENTE / MULTI MÉDICO)
@@ -1038,6 +1206,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateUser: AppContextType["updateUser"] = async (id, data) => {
+    try {
+      const { password: _password, ...payload } = data as any;
+      void _password;
+
+      const { error } = await supabase.from("users").update(payload).eq("id", id);
+      if (error) throw error;
+
+      refreshInBackground();
+      return true;
+    } catch (err: any) {
+      console.error("updateUser:", err?.message || err);
+      toast.error(err?.message || "Erro ao atualizar usuário");
+      return false;
+    }
+  };
+
+  const deleteUser: AppContextType["deleteUser"] = async (id) => {
+    try {
+      await supabase.from("appointment_patients").delete().eq("patient_id", id);
+      await supabase.from("appointment_doctors").delete().eq("doctor_id", id);
+      await supabase.from("appointments").delete().eq("patient_id", id);
+      await supabase.from("appointments").delete().eq("doctor_id", id);
+      await supabase.from("patients").delete().eq("user_id", id);
+      await supabase.from("medicos").delete().eq("user_id", id);
+
+      const { error } = await supabase.from("users").delete().eq("id", id);
+      if (error) throw error;
+
+      refreshInBackground();
+      return true;
+    } catch (err: any) {
+      console.error("deleteUser:", err?.message || err);
+      toast.error(err?.message || "Erro ao excluir usuário");
+      return false;
+    }
+  };
+
   const addAppointment: AppContextType["addAppointment"] = async (data) => {
     try {
       // ✅ aceita payload do ExcelScheduleGrid (que pode vir com patient_ids/doctor_ids)
@@ -1150,7 +1356,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return expandWeeklyAppointments(nextBase);
       });
 
-      await loadAll();
+      refreshAppointmentsInBackground();
       if (!isRecurrenceOverride) {
         const { doctorsList, doctorMessage } = buildAppointmentMessages({
           type: "create",
@@ -1358,7 +1564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         })
       );
 
-      await loadAll();
+      refreshAppointmentsInBackground();
       const effectivePatientIds =
         patientIds ?? previous?.patient_ids ?? [previous?.patient_id || ""];
       const effectiveDoctorIds =
@@ -1457,7 +1663,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from("appointments").delete().eq("id", id);
       if (error) throw error;
 
-      await loadAll();
+      refreshAppointmentsInBackground();
       if (previous) {
         const { doctorsList, doctorMessage } = buildAppointmentMessages({
           type: "cancel",
@@ -1505,7 +1711,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .insert([payload]);
       if (error) throw error;
 
-      await loadAll();
+      refreshInBackground();
       return true;
     } catch (err: any) {
       console.error("addFinancialRecord:", err?.message || err);
@@ -1529,7 +1735,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id);
       if (error) throw error;
 
-      await loadAll();
+      refreshInBackground();
       return true;
     } catch (err: any) {
       console.error("updateFinancialRecord:", err?.message || err);
@@ -1548,11 +1754,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id);
       if (error) throw error;
 
-      await loadAll();
+      refreshInBackground();
       return true;
     } catch (err: any) {
       console.error("deleteFinancialRecord:", err?.message || err);
       toast.error(err?.message || "Erro ao excluir registro financeiro");
+      return false;
+    }
+  };
+
+  const saveServicesLocal = (list: Service[]) => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(SERVICES_KEY, JSON.stringify(list));
+  };
+
+  const addService: AppContextType["addService"] = async (data) => {
+    try {
+      const newItem: Service = {
+        id: crypto.randomUUID(),
+        name: String(data.name || "").trim(),
+        description: data.description ? String(data.description) : "",
+        price: Number(data.price) || 0,
+        duration: Number(data.duration) || 60,
+        category: data.category ? String(data.category) : "Outros",
+        is_active: data.is_active !== false,
+        created_at: new Date().toISOString(),
+      };
+      setServices((prev) => {
+        const next = [newItem, ...prev];
+        saveServicesLocal(next);
+        return next;
+      });
+      toast.success("Serviço criado.");
+      return true;
+    } catch (err: any) {
+      console.error("addService:", err?.message || err);
+      toast.error(err?.message || "Erro ao criar serviço");
+      return false;
+    }
+  };
+
+  const updateService: AppContextType["updateService"] = async (id, data) => {
+    try {
+      setServices((prev) => {
+        const next = prev.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                ...data,
+                price: data.price !== undefined ? Number(data.price) || 0 : s.price,
+                duration:
+                  data.duration !== undefined ? Number(data.duration) || 60 : s.duration,
+              }
+            : s
+        );
+        saveServicesLocal(next);
+        return next;
+      });
+      toast.success("Serviço atualizado.");
+      return true;
+    } catch (err: any) {
+      console.error("updateService:", err?.message || err);
+      toast.error(err?.message || "Erro ao atualizar serviço");
+      return false;
+    }
+  };
+
+  const deleteService: AppContextType["deleteService"] = async (id) => {
+    try {
+      setServices((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        saveServicesLocal(next);
+        return next;
+      });
+      toast.success("Serviço removido.");
+      return true;
+    } catch (err: any) {
+      console.error("deleteService:", err?.message || err);
+      toast.error(err?.message || "Erro ao remover serviço");
       return false;
     }
   };
@@ -1576,12 +1855,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         error,
         reloadAll: loadAll,
         addUser,
+        updateUser,
+        deleteUser,
         addAppointment,
         updateAppointment,
         deleteAppointment,
         addFinancialRecord,
         updateFinancialRecord,
         deleteFinancialRecord,
+        addService,
+        updateService,
+        deleteService,
       }}
     >
       {children}

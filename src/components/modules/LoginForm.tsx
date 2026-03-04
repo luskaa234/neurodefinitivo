@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,20 +44,11 @@ export function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4f46e5] text-gray-100">
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 text-center border border-white/20"
-      >
+      <div className="w-full max-w-md bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 text-center border border-white/20">
         <div className="flex flex-col items-center mb-8">
-          <motion.div
-            animate={{ rotate: [0, 5, -5, 0] }}
-            transition={{ repeat: Infinity, duration: 5 }}
-            className="bg-gradient-to-r from-indigo-500 to-purple-600 p-4 rounded-2xl shadow-md"
-          >
+          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-4 rounded-2xl shadow-md">
             <span className="text-white text-4xl">🔐</span>
-          </motion.div>
+          </div>
           <h1 className="text-3xl font-bold mt-4">Acesso ao Sistema</h1>
           <p className="text-gray-300 text-sm">
             Faça login para continuar
@@ -95,8 +85,7 @@ export function LoginForm() {
             </button>
           </div>
 
-          <motion.button
-            whileTap={{ scale: 0.97 }}
+          <button
             type="submit"
             disabled={isLoading}
             className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold py-2 rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg disabled:opacity-70"
@@ -109,13 +98,13 @@ export function LoginForm() {
             ) : (
               "Entrar"
             )}
-          </motion.button>
+          </button>
         </form>
 
         <p className="text-gray-400 text-xs mt-6">
           Credenciais verificadas com segurança no servidor.
         </p>
-      </motion.div>
+      </div>
     </div>
   );
 }

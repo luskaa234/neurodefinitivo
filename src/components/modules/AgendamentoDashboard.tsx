@@ -41,6 +41,13 @@ export function AgendamentoDashboard() {
   const [pendingSearch, setPendingSearch] = useState('');
   const [pendingDate, setPendingDate] = useState('');
   const [pendingType, setPendingType] = useState('');
+  const normalizePhoneBR = (raw?: string | null) => {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.startsWith('55')) return digits.length >= 12 ? digits : '';
+    if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+    return '';
+  };
 
   const today = nowLocal();
   const todayDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -140,13 +147,12 @@ export function AgendamentoDashboard() {
 
   const handleConfirmAll = async () => {
     if (window.confirm(`Confirmar todas as ${pendingConfirmations.length} consultas pendentes?`)) {
-      let successCount = 0;
-      
-      for (const appointment of pendingConfirmations) {
-        const success = await updateAppointment(appointment.id, { status: 'confirmado' });
-        if (success) successCount++;
-      }
-      
+      const results = await Promise.all(
+        pendingConfirmations.map((appointment) =>
+          updateAppointment(appointment.id, { status: 'confirmado' })
+        )
+      );
+      const successCount = results.filter(Boolean).length;
       toast.success(`${successCount} consultas confirmadas!`);
     }
   };
@@ -159,6 +165,11 @@ export function AgendamentoDashboard() {
       toast.error('Erro ao encontrar dados do paciente ou médico');
       return;
     }
+    const patientPhone = normalizePhoneBR(patient.phone);
+    if (!patientPhone) {
+      toast.error(`Paciente sem telefone válido: ${patient.name}`);
+      return;
+    }
 
     const serviceLabel = appointment.type ? `com ${appointment.type}` : "com atendimento";
     const finalMessage =
@@ -166,7 +177,7 @@ export function AgendamentoDashboard() {
       `Olá, bom dia, tudo bem?\n${patient.name} você tem atendimento agendado para o dia ${formatDateBR(
         appointment.date
       )}, às ${appointment.time}, ${serviceLabel} (${doctor.name}).\nPosso confirmar a presença hoje?`;
-    const whatsappUrl = `https://contate.me/5598984692267?text=${encodeURIComponent(finalMessage)}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${patientPhone}&text=${encodeURIComponent(finalMessage)}`;
     
     window.open(whatsappUrl, '_blank');
     toast.success('WhatsApp aberto para envio!');
@@ -186,8 +197,7 @@ export function AgendamentoDashboard() {
   };
 
   const sendBulkReminders = async () => {
-    const tomorrowPending = tomorrowAppointments.filter(apt => apt.status === "pendente"
-);
+    const tomorrowPending = tomorrowAppointments.filter((apt) => apt.status === "pendente");
     
     if (tomorrowPending.length === 0) {
       toast.error('Nenhuma consulta pendente para amanhã');
@@ -196,17 +206,18 @@ export function AgendamentoDashboard() {
 
     if (window.confirm(`Enviar lembretes para ${tomorrowPending.length} consultas de amanhã?`)) {
       let successCount = 0;
-      
+
       for (const appointment of tomorrowPending) {
         const patient = patients.find(p => p.id === appointment.patient_id);
         const doctor = doctors.find(d => d.id === appointment.doctor_id);
+        const patientPhone = normalizePhoneBR(patient?.phone);
         
-        if (patient && doctor) {
+        if (patient && doctor && patientPhone) {
         const serviceLabel = appointment.type ? `com ${appointment.type}` : "com atendimento";
         const message = `Olá, bom dia, tudo bem?\n${patient.name} você tem atendimento agendado para o dia ${formatDateBR(
           appointment.date
         )}, às ${appointment.time}, ${serviceLabel} (${doctor.name}).\nEsse é um lembrete do seu atendimento.\nPosso confirmar a presença hoje?`;
-          const whatsappUrl = `https://contate.me/5598984692267?text=${encodeURIComponent(message)}`;
+          const whatsappUrl = `https://api.whatsapp.com/send?phone=${patientPhone}&text=${encodeURIComponent(message)}`;
           
           window.open(whatsappUrl, '_blank');
           successCount++;

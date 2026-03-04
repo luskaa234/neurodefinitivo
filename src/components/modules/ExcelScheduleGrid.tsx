@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -193,7 +193,13 @@ const normalizePhone = (value?: string | null) => {
   if (!value) return "";
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
-  return digits.startsWith("55") ? digits : `55${digits}`;
+  if (digits.startsWith("55")) {
+    return digits.length >= 12 ? digits : "";
+  }
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`;
+  }
+  return "";
 };
 
 const formatDateTime = (date?: string, time?: string) => {
@@ -287,19 +293,53 @@ export default function ExcelScheduleGrid() {
     status: "agendado",
     is_fixed: false,
   });
+  const appointmentsList = useMemo(
+    () => appointments as unknown as AptLike[],
+    [appointments]
+  );
 
   /* ======================================================
      HELPERS (dados)
   ====================================================== */
-  const getPaciente = (id: string) => patients.find((p) => p.id === id)?.name || "Paciente";
-  const getMedico = (id: string) => doctors.find((d) => d.id === id)?.name || "Médico";
+  const patientNameById = useMemo(
+    () => new Map(patients.map((p) => [p.id, p.name] as const)),
+    [patients]
+  );
+  const doctorNameById = useMemo(
+    () => new Map(doctors.map((d) => [d.id, d.name] as const)),
+    [doctors]
+  );
+  const serviceDurationByName = useMemo(
+    () => new Map(services.map((s) => [s.name, s.duration] as const)),
+    [services]
+  );
+  const getPaciente = useCallback(
+    (id: string) => patientNameById.get(id) || "Paciente",
+    [patientNameById]
+  );
+  const getMedico = useCallback(
+    (id: string) => doctorNameById.get(id) || "Médico",
+    [doctorNameById]
+  );
+  const getAllPatients = useCallback(
+    (apt: AptLike) =>
+      apt.patient_ids?.length ? apt.patient_ids : uniq([apt.patient_id]),
+    []
+  );
+  const getAllDoctors = useCallback(
+    (apt: AptLike) =>
+      apt.doctor_ids?.length ? apt.doctor_ids : uniq([apt.doctor_id]),
+    []
+  );
+  const duracaoServico = useCallback(
+    (type: string) => serviceDurationByName.get(type) ?? 60,
+    [serviceDurationByName]
+  );
 
-  const getAllPatients = (apt: AptLike) => (apt.patient_ids?.length ? apt.patient_ids : uniq([apt.patient_id]));
-  const getAllDoctors = (apt: AptLike) => (apt.doctor_ids?.length ? apt.doctor_ids : uniq([apt.doctor_id]));
-
-  const duracaoServico = (type: string) => services.find((s) => s.name === type)?.duration ?? 60;
-
-  const formDuration = useMemo(() => duracaoServico(form.type), [form.type, services]);
+  const formDuration = useMemo(
+    () => duracaoServico(form.type),
+    [form.type, duracaoServico]
+  );
 
   const isReschedule = useMemo(() => {
     if (!editing || !selected) return false;
@@ -345,32 +385,73 @@ export default function ExcelScheduleGrid() {
     if (!form.date || !form.time || !form.type || form.doctor_ids.length === 0) return false;
     const ignore = editing && selected?.id ? selected.id : undefined;
     return hasConflict(form.doctor_ids, form.date, form.time, duracaoServico(form.type), ignore);
-  }, [form, editing, selected, appointments, services]);
+  }, [form, editing, selected, appointments, duracaoServico]);
 
   /* ======================================================
      FILTROS (lista do calendário)
   ====================================================== */
-  const filtered = useMemo(() => {
-    return (appointments as unknown as AptLike[]).filter((apt) => {
+  const searchTerm = search.trim().toLowerCase();
+
+  const hasActiveFilter =
+    searchTerm.length > 0 ||
+    filterPatient !== "all" ||
+    filterDoctor !== "all" ||
+    selectedDoctorId !== "all" ||
+    filterStatus !== "all" ||
+    filterDate.length > 0;
+
+  const searchTextByAppointmentId = useMemo(() => {
+    if (!searchTerm) return null;
+    const map = new Map<string, string>();
+    appointmentsList.forEach((apt) => {
       const pacientesTxt = getAllPatients(apt).map(getPaciente).join(" ").toLowerCase();
       const medicosTxt = getAllDoctors(apt).map(getMedico).join(" ").toLowerCase();
       const typeTxt = (apt.type || "").toLowerCase();
-      const statusUI = toUiStatus(apt.status);
+      map.set(apt.id, `${pacientesTxt} ${medicosTxt} ${typeTxt}`.trim());
+    });
+    return map;
+  }, [
+    searchTerm,
+    appointmentsList,
+    getAllDoctors,
+    getAllPatients,
+    getMedico,
+    getPaciente,
+  ]);
 
-      if (search) {
-        const q = search.toLowerCase();
-        if (!pacientesTxt.includes(q) && !medicosTxt.includes(q) && !typeTxt.includes(q)) return false;
-      }
+  const filtered = useMemo(() => {
+    if (!hasActiveFilter) return appointmentsList;
 
-      if (filterPatient !== "all" && !getAllPatients(apt).includes(filterPatient)) return false;
-      if (filterDoctor !== "all" && !getAllDoctors(apt).includes(filterDoctor)) return false;
-      if (selectedDoctorId !== "all" && !getAllDoctors(apt).includes(selectedDoctorId)) return false;
-      if (filterStatus !== "all" && statusUI !== filterStatus) return false;
+    return appointmentsList.filter((apt) => {
+      const patientIds = getAllPatients(apt);
+      const doctorIds = getAllDoctors(apt);
+
+      if (filterPatient !== "all" && !patientIds.includes(filterPatient)) return false;
+      if (filterDoctor !== "all" && !doctorIds.includes(filterDoctor)) return false;
+      if (selectedDoctorId !== "all" && !doctorIds.includes(selectedDoctorId)) return false;
+      if (filterStatus !== "all" && toUiStatus(apt.status) !== filterStatus) return false;
       if (filterDate && apt.date !== filterDate) return false;
+
+      if (searchTerm) {
+        const searchText = searchTextByAppointmentId?.get(apt.id) || "";
+        if (!searchText.includes(searchTerm)) return false;
+      }
 
       return true;
     });
-  }, [appointments, search, filterPatient, filterDoctor, filterStatus, filterDate, selectedDoctorId]);
+  }, [
+    hasActiveFilter,
+    appointmentsList,
+    getAllDoctors,
+    getAllPatients,
+    filterPatient,
+    filterDoctor,
+    selectedDoctorId,
+    filterStatus,
+    filterDate,
+    searchTerm,
+    searchTextByAppointmentId,
+  ]);
 
   const summaryDate = filterDate || toDateStr(currentWeekStart);
 
@@ -414,16 +495,25 @@ export default function ExcelScheduleGrid() {
     return merged;
   }, [appointments, currentWeekStart]);
 
-  const isSlotAvailable = (dayIndex: number, time: string) => {
+  const doctorScheduleByDay = useMemo(() => {
+    const map = new Map<number, MedicoHorario[]>();
+    doctorSchedule.forEach((entry) => {
+      const day = Number(entry.day_of_week) % 7;
+      const list = map.get(day) || [];
+      list.push(entry);
+      map.set(day, list);
+    });
+    return map;
+  }, [doctorSchedule]);
+
+  const isSlotAvailable = useCallback((dayIndex: number, time: string) => {
     if (selectedDoctorId === "all") return true;
     if (!doctorSchedule.length) return true;
-    const schedule = doctorSchedule.filter(
-      (s) => Number(s.day_of_week) === (dayIndex % 7)
-    );
+    const schedule = doctorScheduleByDay.get(dayIndex % 7) || [];
     if (!schedule.length) return false;
     const timeValue = time;
     return schedule.some((s) => timeValue >= s.start_time && timeValue <= s.end_time);
-  };
+  }, [selectedDoctorId, doctorSchedule.length, doctorScheduleByDay]);
 
   const doctorWeekAppointments = useMemo(() => {
     if (!selectedDoctorId) return [];
@@ -434,7 +524,7 @@ export default function ExcelScheduleGrid() {
       if (selectedDoctorId !== "all" && !getAllDoctors(apt).includes(selectedDoctorId)) return false;
       return apt.date >= weekStartStr && apt.date <= weekEndStr;
     });
-  }, [filtered, selectedDoctorId, currentWeekStart]);
+  }, [filtered, selectedDoctorId, currentWeekStart, getAllDoctors]);
 
   const appointmentsBySlot = useMemo(() => {
     const map = new Map<string, AptLike[]>();
@@ -447,6 +537,55 @@ export default function ExcelScheduleGrid() {
     });
     return map;
   }, [doctorWeekAppointments]);
+
+  const cardMetaByAppointmentId = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        patientNames: string;
+        doctorNames: string;
+        bg: string;
+        statusLabel: string;
+        statusClass: string;
+      }
+    >();
+
+    doctorWeekAppointments.forEach((apt) => {
+      const patientIds = getAllPatients(apt);
+      const doctorIds = getAllDoctors(apt);
+      const patientNames = patientIds.map(getPaciente).join(", ");
+      const doctorNames = doctorIds.map(getMedico).join(", ");
+      const colorKey = patientIds[0] || apt.patient_id;
+      const bg = hashColor(colorKey);
+      const status = String(apt.status || "").toLowerCase();
+      const statusLabel =
+        status === "confirmado"
+          ? "Confirmado"
+          : status === "cancelado"
+            ? "Cancelado"
+            : status === "realizado"
+              ? "Realizado"
+              : "Pendente";
+      const statusClass =
+        status === "confirmado"
+          ? "bg-emerald-100 text-emerald-800"
+          : status === "cancelado"
+            ? "bg-rose-100 text-rose-800"
+            : status === "realizado"
+              ? "bg-sky-100 text-sky-800"
+              : "bg-amber-100 text-amber-800";
+
+      map.set(apt.id, {
+        patientNames,
+        doctorNames,
+        bg,
+        statusLabel,
+        statusClass,
+      });
+    });
+
+    return map;
+  }, [doctorWeekAppointments, getAllDoctors, getAllPatients, getMedico, getPaciente]);
 
   /* ======================================================
      AÇÕES
@@ -1253,45 +1392,24 @@ export default function ExcelScheduleGrid() {
                           {items.length > 0 ? (
                             <div className="space-y-2">
                               {items.map((apt) => {
-                                const patientNames = getAllPatients(apt)
-                                  .map(getPaciente)
-                                  .join(", ");
-                                const colorKey = getAllPatients(apt)[0] || apt.patient_id;
-                                const bg = hashColor(colorKey);
-                                const status = String(apt.status || "").toLowerCase();
-                                const statusLabel =
-                                  status === "confirmado"
-                                    ? "Confirmado"
-                                    : status === "cancelado"
-                                      ? "Cancelado"
-                                      : status === "realizado"
-                                        ? "Realizado"
-                                      : "Pendente";
-                                const statusClass =
-                                  status === "confirmado"
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : status === "cancelado"
-                                      ? "bg-rose-100 text-rose-800"
-                                      : status === "realizado"
-                                        ? "bg-sky-100 text-sky-800"
-                                      : "bg-amber-100 text-amber-800";
+                                const meta = cardMetaByAppointmentId.get(apt.id);
                                 return (
                                   <div
                                     key={apt.id}
                                     className="rounded-md px-1 py-1 text-white shadow-sm"
-                                    style={{ backgroundColor: bg }}
+                                    style={{ backgroundColor: meta?.bg || hashColor(apt.patient_id) }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       openEdit(apt);
                                     }}
                                   >
                                     <div className="text-[10px] font-semibold leading-tight break-words">
-                                      {patientNames}
+                                      {meta?.patientNames || getAllPatients(apt).map(getPaciente).join(", ")}
                                       {apt.is_fixed && <span className="ml-1">📌</span>}
                                     </div>
                                     {selectedDoctorId === "all" && (
                                       <div className="text-[9px] opacity-90 break-words">
-                                        {getAllDoctors(apt).map(getMedico).join(", ")}
+                                        {meta?.doctorNames || getAllDoctors(apt).map(getMedico).join(", ")}
                                       </div>
                                     )}
                                     <div className="text-[9px] opacity-90 break-words">{apt.type}</div>
@@ -1299,10 +1417,10 @@ export default function ExcelScheduleGrid() {
                                       <span
                                         className={cn(
                                           "inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
-                                          statusClass
+                                          meta?.statusClass || "bg-amber-100 text-amber-800"
                                         )}
                                       >
-                                        {statusLabel}
+                                        {meta?.statusLabel || "Pendente"}
                                       </span>
                                     </div>
                                   </div>

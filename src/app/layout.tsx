@@ -1,13 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppProvider } from "@/contexts/AppContext";
 import RegisterSW from "@/components/pwa/RegisterSW";
 import SettingsApplier from "@/components/SettingsApplier";
-
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
-const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Neuro Integrar - Sistema de Gestão",
@@ -47,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* use os mesmos caminhos dos ícones acima */}
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className="antialiased">
         <AuthProvider>
           <AppProvider>
             <SettingsApplier />

@@ -341,13 +341,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeDuplicateAppointments = async () => {
-    const { data, error } = await supabase
-      .from("appointments")
-      .select("id,date,time,doctor_id,patient_id,created_at,notes");
+    const pageSize = 1000;
+    let from = 0;
+    const allRows: any[] = [];
 
-    if (error) throw error;
+    while (true) {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id,date,time,doctor_id,patient_id,created_at,notes")
+        .order("created_at", { ascending: true })
+        .range(from, from + pageSize - 1);
 
-    const rows = (data ?? []).filter((apt: any) => {
+      if (error) throw error;
+
+      const batch = data ?? [];
+      allRows.push(...batch);
+      if (batch.length < pageSize) break;
+      from += pageSize;
+    }
+
+    const rows = allRows.filter((apt: any) => {
       const note = String(apt?.notes || "");
       return (
         !note.startsWith(RECURRENCE_OVERRIDE_NOTE_PREFIX) &&
@@ -379,10 +392,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (!toDelete.length) return 0;
 
-    await supabase.from("appointment_patients").delete().in("appointment_id", toDelete);
-    await supabase.from("appointment_doctors").delete().in("appointment_id", toDelete);
-    await supabase.from("financial_records").delete().in("appointment_id", toDelete);
-    await supabase.from("appointments").delete().in("id", toDelete);
+    const { error: apError } = await supabase
+      .from("appointment_patients")
+      .delete()
+      .in("appointment_id", toDelete);
+    if (apError) throw apError;
+
+    const { error: adError } = await supabase
+      .from("appointment_doctors")
+      .delete()
+      .in("appointment_id", toDelete);
+    if (adError) throw adError;
+
+    const { error: frError } = await supabase
+      .from("financial_records")
+      .delete()
+      .in("appointment_id", toDelete);
+    if (frError) throw frError;
+
+    const { error: aError } = await supabase
+      .from("appointments")
+      .delete()
+      .in("id", toDelete);
+    if (aError) throw aError;
 
     return toDelete.length;
   };
@@ -1004,7 +1036,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return;
     if (loading) return;
 
-    const dedupeKey = "appointments-dedupe-v1";
+    const dedupeKey = "appointments-dedupe-v2";
     if (localStorage.getItem(dedupeKey) === "1") return;
 
     const run = async () => {

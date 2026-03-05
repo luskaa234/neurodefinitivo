@@ -392,13 +392,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (!toDelete.length) return 0;
 
-    const chunkSize = 150;
-    const chunks: string[][] = [];
+    const chunkSize = 20;
     for (let i = 0; i < toDelete.length; i += chunkSize) {
-      chunks.push(toDelete.slice(i, i + chunkSize));
-    }
-
-    for (const ids of chunks) {
+      const ids = toDelete.slice(i, i + chunkSize);
       const { error: apError } = await supabase
         .from("appointment_patients")
         .delete()
@@ -1025,8 +1021,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         // remove possíveis vínculos financeiros gerados por versões anteriores
-        await supabase.from("financial_records").delete().in("appointment_id", ids);
-        await supabase.from("appointments").delete().in("id", ids);
+        const chunkSize = 20;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const batch = ids.slice(i, i + chunkSize);
+          const { error: finErr } = await supabase
+            .from("financial_records")
+            .delete()
+            .in("appointment_id", batch);
+          if (finErr) throw finErr;
+
+          const { error: aptErr } = await supabase
+            .from("appointments")
+            .delete()
+            .in("id", batch);
+          if (aptErr) throw aptErr;
+        }
 
         localStorage.setItem(recoveryKey, "1");
         await loadAll();
@@ -1044,7 +1053,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return;
     if (loading) return;
 
-    const dedupeKey = "appointments-dedupe-v2";
+    const dedupeKey = "appointments-dedupe-v3";
     if (localStorage.getItem(dedupeKey) === "1") return;
 
     const run = async () => {
@@ -1558,10 +1567,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               .filter(Boolean);
 
             if (duplicateIds.length) {
-              await supabase
-                .from("appointments")
-                .update({ status: patch.status })
-                .in("id", duplicateIds);
+              const chunkSize = 20;
+              for (let i = 0; i < duplicateIds.length; i += chunkSize) {
+                const batch = duplicateIds.slice(i, i + chunkSize);
+                const { error: dupErr } = await supabase
+                  .from("appointments")
+                  .update({ status: patch.status })
+                  .in("id", batch);
+                if (dupErr) throw dupErr;
+              }
             }
           }
         }

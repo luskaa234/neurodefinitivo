@@ -392,29 +392,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (!toDelete.length) return 0;
 
-    const { error: apError } = await supabase
-      .from("appointment_patients")
-      .delete()
-      .in("appointment_id", toDelete);
-    if (apError) throw apError;
+    const chunkSize = 150;
+    const chunks: string[][] = [];
+    for (let i = 0; i < toDelete.length; i += chunkSize) {
+      chunks.push(toDelete.slice(i, i + chunkSize));
+    }
 
-    const { error: adError } = await supabase
-      .from("appointment_doctors")
-      .delete()
-      .in("appointment_id", toDelete);
-    if (adError) throw adError;
+    for (const ids of chunks) {
+      const { error: apError } = await supabase
+        .from("appointment_patients")
+        .delete()
+        .in("appointment_id", ids);
+      if (apError) throw apError;
 
-    const { error: frError } = await supabase
-      .from("financial_records")
-      .delete()
-      .in("appointment_id", toDelete);
-    if (frError) throw frError;
+      const { error: adError } = await supabase
+        .from("appointment_doctors")
+        .delete()
+        .in("appointment_id", ids);
+      if (adError) throw adError;
 
-    const { error: aError } = await supabase
-      .from("appointments")
-      .delete()
-      .in("id", toDelete);
-    if (aError) throw aError;
+      const { error: frError } = await supabase
+        .from("financial_records")
+        .delete()
+        .in("appointment_id", ids);
+      if (frError) throw frError;
+
+      const { error: aError } = await supabase
+        .from("appointments")
+        .delete()
+        .in("id", ids);
+      if (aError) throw aError;
+    }
 
     return toDelete.length;
   };

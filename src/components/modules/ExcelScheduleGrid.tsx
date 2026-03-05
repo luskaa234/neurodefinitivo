@@ -707,7 +707,6 @@ export default function ExcelScheduleGrid() {
       if (savedDate) {
         setCurrentWeekStart(getWeekStart(savedDate));
       }
-      setSelectedDoctorId("all");
       setFilterPatient("all");
       setFilterDoctor("all");
       setFilterStatus("all");

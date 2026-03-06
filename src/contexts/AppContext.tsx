@@ -897,6 +897,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [performLoadAll]);
 
+  const patchAppointmentInCache = useCallback(
+    (appointmentId: string, patch: Partial<Appointment>) => {
+      if (typeof window === "undefined") return;
+      try {
+        const cachedRaw = localStorage.getItem(CACHE_KEY);
+        if (!cachedRaw) return;
+        const cached = JSON.parse(cachedRaw);
+        const cachedAppointments = Array.isArray(cached?.appointments)
+          ? cached.appointments
+          : [];
+        const allowedPatch: Record<string, any> = {};
+        [
+          "patient_id",
+          "doctor_id",
+          "date",
+          "time",
+          "status",
+          "type",
+          "notes",
+          "price",
+          "is_fixed",
+        ].forEach((key) => {
+          if ((patch as any)[key] !== undefined) {
+            allowedPatch[key] = (patch as any)[key];
+          }
+        });
+        if (Object.keys(allowedPatch).length === 0) return;
+
+        const nextAppointments = cachedAppointments.map((apt: any) =>
+          apt?.id === appointmentId ? { ...apt, ...allowedPatch } : apt
+        );
+
+        localStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({
+            ...(cached || {}),
+            appointments: nextAppointments,
+            savedAt: new Date().toISOString(),
+          })
+        );
+      } catch {
+        // non-fatal
+      }
+    },
+    [CACHE_KEY]
+  );
+
   const refreshInBackground = useCallback(() => {
     void loadAll().catch((err: any) => {
       console.error("background loadAll error:", err?.message || err);
@@ -1079,6 +1126,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const migrationKey = "force-all-pending-v2";
     if (localStorage.getItem(migrationKey) === "1") return;
+    // Migração destrutiva: só executa quando habilitada manualmente.
+    const enableMigrationKey = "force-all-pending-enabled";
+    if (localStorage.getItem(enableMigrationKey) !== "1") {
+      localStorage.setItem(migrationKey, "1");
+      return;
+    }
 
     const run = async () => {
       try {
@@ -1617,6 +1670,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           };
         })
       );
+      patchAppointmentInCache(id, patch as Partial<Appointment>);
 
       refreshAppointmentsInBackground();
       const effectivePatientIds =

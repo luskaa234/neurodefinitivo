@@ -70,12 +70,6 @@ type AptLike = {
 
 };
 
-type MedicoHorario = {
-  day_of_week: number | string;
-  start_time: string;
-  end_time: string;
-};
-
 type FormState = {
   patient_ids: string[];
   doctor_ids: string[];
@@ -122,28 +116,6 @@ const chunkArray = <T,>(arr: T[], size: number) => {
     out.push(arr.slice(i, i + size));
   }
   return out;
-};
-
-const isMedicoHorario = (value: any): value is MedicoHorario =>
-  value &&
-  typeof value === "object" &&
-  "day_of_week" in value &&
-  "start_time" in value &&
-  "end_time" in value;
-
-const parseMedicoHorarios = (value: unknown): MedicoHorario[] => {
-  if (Array.isArray(value)) {
-    return value.filter(isMedicoHorario);
-  }
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.filter(isMedicoHorario) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
 };
 
 const hashColor = (id: string) => {
@@ -262,7 +234,6 @@ export default function ExcelScheduleGrid() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getWeekStart(new Date()));
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
-  const [doctorSchedule, setDoctorSchedule] = useState<MedicoHorario[]>([]);
   const [quickDoctorName, setQuickDoctorName] = useState("");
   const [isCreatingDoctor, setIsCreatingDoctor] = useState(false);
   const [quickPatientName, setQuickPatientName] = useState("");
@@ -495,25 +466,9 @@ export default function ExcelScheduleGrid() {
     return merged;
   }, [appointments, currentWeekStart]);
 
-  const doctorScheduleByDay = useMemo(() => {
-    const map = new Map<number, MedicoHorario[]>();
-    doctorSchedule.forEach((entry) => {
-      const day = Number(entry.day_of_week) % 7;
-      const list = map.get(day) || [];
-      list.push(entry);
-      map.set(day, list);
-    });
-    return map;
-  }, [doctorSchedule]);
-
-  const isSlotAvailable = useCallback((dayIndex: number, time: string) => {
-    if (selectedDoctorId === "all") return true;
-    if (!doctorSchedule.length) return true;
-    const schedule = doctorScheduleByDay.get(dayIndex % 7) || [];
-    if (!schedule.length) return false;
-    const timeValue = time;
-    return schedule.some((s) => timeValue >= s.start_time && timeValue <= s.end_time);
-  }, [selectedDoctorId, doctorSchedule.length, doctorScheduleByDay]);
+  const isSlotAvailable = useCallback((_dayIndex: number, _time: string) => {
+    return true;
+  }, []);
 
   const doctorWeekAppointments = useMemo(() => {
     if (!selectedDoctorId) return [];
@@ -1102,26 +1057,6 @@ export default function ExcelScheduleGrid() {
       window.removeEventListener("storage", updateFromSettings);
     };
   }, []);
-
-  useEffect(() => {
-    const loadSchedule = async () => {
-      if (!selectedDoctorId || selectedDoctorId === "all") {
-        setDoctorSchedule([]);
-        return;
-      }
-      const { data, error } = await supabase
-        .from("medicos")
-        .select("horarios")
-        .eq("user_id", selectedDoctorId)
-        .maybeSingle();
-      if (error) {
-        setDoctorSchedule([]);
-        return;
-      }
-      setDoctorSchedule(parseMedicoHorarios(data?.horarios));
-    };
-    loadSchedule();
-  }, [selectedDoctorId]);
 
   /* ======================================================
      UI

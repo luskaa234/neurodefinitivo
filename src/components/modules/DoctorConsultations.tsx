@@ -152,13 +152,18 @@ export function DoctorConsultations() {
   
   const today = nowLocal();
   const todayDateStr = toInputDate(today);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowDateStr = toInputDate(tomorrow);
   const todayAppointments = myAppointments.filter(
     (apt) => apt.date === todayDateStr
   );
 
-  const upcomingAppointments = myAppointments.filter(
-    (apt) => apt.date > todayDateStr && apt.status !== "cancelado"
+  const tomorrowAppointments = myAppointments.filter(
+    (apt) => apt.date === tomorrowDateStr && apt.status !== "cancelado"
   );
+
+  const pastAppointments = myAppointments.filter((apt) => apt.date < todayDateStr);
 
   const getPatientName = (patientId: string) => {
     const patient = patients.find(p => p.id === patientId);
@@ -463,12 +468,12 @@ export function DoctorConsultations() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Próximas Consultas</CardTitle>
+            <CardTitle className="text-sm font-medium">Consultas Amanhã</CardTitle>
             <Clock className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{upcomingAppointments.length}</div>
-            <p className="text-xs text-muted-foreground">Agendamentos futuros</p>
+            <div className="text-2xl font-bold text-green-600">{tomorrowAppointments.length}</div>
+            <p className="text-xs text-muted-foreground">Somente o próximo dia</p>
           </CardContent>
         </Card>
 
@@ -497,10 +502,11 @@ export function DoctorConsultations() {
         </Card>
       </div>
 
-      <Tabs defaultValue="upcoming" className="space-y-4">
+      <Tabs defaultValue="today" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="upcoming">🔮 Próximas ({upcomingAppointments.length})</TabsTrigger>
           <TabsTrigger value="today">📅 Hoje ({todayAppointments.length})</TabsTrigger>
+          <TabsTrigger value="upcoming">Amanhã ({tomorrowAppointments.length})</TabsTrigger>
+          <TabsTrigger value="past">Passadas ({pastAppointments.length})</TabsTrigger>
           <TabsTrigger value="justifications">⚠️ Justificativas ({justifications.length})</TabsTrigger>
         </TabsList>
 
@@ -572,9 +578,9 @@ export function DoctorConsultations() {
         <TabsContent value="upcoming">
           <Card>
             <CardHeader>
-              <CardTitle>🔮 Próximas Consultas</CardTitle>
+              <CardTitle>Atendimentos de Amanhã</CardTitle>
               <CardDescription>
-                Suas consultas agendadas para os próximos dias
+                Somente as consultas do dia seguinte aparecem aqui
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -590,8 +596,8 @@ export function DoctorConsultations() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upcomingAppointments
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                  {tomorrowAppointments
+                    .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
                     .map((appointment) => (
                     <TableRow key={appointment.id}>
                       <TableCell>{formatDateBR(appointment.date)}</TableCell>
@@ -611,9 +617,65 @@ export function DoctorConsultations() {
                   ))}
                 </TableBody>
               </Table>
-              {upcomingAppointments.length === 0 && (
+              {tomorrowAppointments.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  🔮 Nenhuma consulta futura agendada
+                  Nenhuma consulta agendada para amanhã
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="past">
+          <Card>
+            <CardHeader>
+              <CardTitle>Consultas Passadas</CardTitle>
+              <CardDescription>
+                Histórico das consultas anteriores a hoje
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Horário</TableHead>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pastAppointments
+                    .sort(
+                      (a, b) =>
+                        new Date(`${b.date}T${b.time || "00:00"}`).getTime() -
+                        new Date(`${a.date}T${a.time || "00:00"}`).getTime()
+                    )
+                    .map((appointment) => (
+                    <TableRow key={appointment.id}>
+                      <TableCell>{formatDateBR(appointment.date)}</TableCell>
+                      <TableCell className="font-bold text-blue-600">{appointment.time}</TableCell>
+                      <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
+                      <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
+                      <TableCell>{appointment.type}</TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          appointment.status === 'confirmado' ? 'default' :
+                          appointment.status === 'pendente' ? 'secondary' :
+                          appointment.status === 'cancelado' ? 'destructive' : 'outline'
+                        }>
+                          {appointment.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {pastAppointments.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  Nenhuma consulta passada encontrada
                 </div>
               )}
             </CardContent>

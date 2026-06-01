@@ -10,6 +10,8 @@ import React, {
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { sendPushNotification } from "@/lib/push";
+import { createWhatsAppMessage, type WhatsAppMessageType } from "@/lib/whatsapp";
+import { createInternalNotification } from "@/lib/notifications";
 
 /* ======================================================
    TIPOS (ALINHADOS AO BANCO REAL)
@@ -527,6 +529,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { patientsList, doctorsList, patientSummaries, doctorMessage };
   };
 
+  const toWhatsappEventType = (type: "create" | "update" | "cancel" | "reschedule"): WhatsAppMessageType => {
+    if (type === "create") return "appointment.created";
+    if (type === "cancel") return "appointment.cancelled";
+    if (type === "reschedule") return "appointment.rescheduled";
+    return "appointment.confirmation";
+  };
+
   const logDoctorNotification = (
     doctorId: string,
     type: "create" | "update" | "cancel" | "reschedule",
@@ -534,18 +543,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     appointmentId: string
   ) => {
     if (typeof window === "undefined") return;
-    const payload = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      doctor_id: doctorId,
-      appointment_id: appointmentId,
-      type,
+    const doctor = getUserById(doctorId);
+    createInternalNotification({
+      userId: doctorId,
+      title:
+        type === "cancel"
+          ? "Consulta cancelada"
+          : type === "reschedule"
+            ? "Consulta remarcada"
+            : "Consulta marcada",
       message,
-      created_at: new Date().toISOString(),
-    };
-    const raw = localStorage.getItem("whatsapp-notifications");
-    const list = raw ? JSON.parse(raw) : [];
-    list.unshift(payload);
-    localStorage.setItem("whatsapp-notifications", JSON.stringify(list));
+      type: toWhatsappEventType(type),
+      entity: "appointments",
+      entityId: appointmentId,
+    });
+    createWhatsAppMessage({
+      patientId: doctorId,
+      patientName: doctor?.name || "Médico",
+      responsibleName: "",
+      phone: doctor?.phone || "",
+      message,
+      messageType: toWhatsappEventType(type),
+      status: "sent",
+      user: user ? { id: user.id, name: user.name } : null,
+      appointmentId,
+    });
   };
 
   const notifyAppointmentWhatsApp = (params: {
@@ -579,6 +601,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       openWhatsApp(phone, summary.message);
+      createWhatsAppMessage({
+        patientId: patient.id,
+        patientName: patient.name,
+        responsibleName: "",
+        phone,
+        message: summary.message,
+        messageType: toWhatsappEventType(type),
+        status: "sent",
+        user: user ? { id: user.id, name: user.name } : null,
+        appointmentId: appointment.id,
+      });
+      createInternalNotification({
+        userId: patient.id,
+        title:
+          type === "cancel"
+            ? "Consulta cancelada"
+            : type === "reschedule"
+              ? "Consulta remarcada"
+              : "Consulta marcada",
+        message: summary.message,
+        type: toWhatsappEventType(type),
+        entity: "appointments",
+        entityId: appointment.id,
+      });
     });
 
     doctorsList.forEach((d) => {
@@ -1316,6 +1362,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from("users").update(payload).eq("id", id);
       if (error) throw error;
 
+      if (payload.status === "pendente" || payload.status === "pago") {
+        createInternalNotification({
+          userId: null,
+          title: payload.status === "pago" ? "Pagamento confirmado" : "Pagamento pendente",
+          message: `${payload.description} - R$ ${payload.amount.toLocaleString("pt-BR")}`,
+          type: payload.status === "pago" ? "payment.confirmed" : "payment.pending",
+          entity: "financial_records",
+        });
+      }
       refreshInBackground();
       return true;
     } catch (err: any) {
@@ -1843,6 +1898,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id);
       if (error) throw error;
 
+      if (patch.status === "pago" || patch.status === "pendente") {
+        createInternalNotification({
+          userId: null,
+          title: patch.status === "pago" ? "Pagamento confirmado" : "Pagamento pendente",
+          message: `Registro financeiro atualizado para ${patch.status}.`,
+          type: patch.status === "pago" ? "payment.confirmed" : "payment.pending",
+          entity: "financial_records",
+          entityId: id,
+        });
+      }
       refreshInBackground();
       return true;
     } catch (err: any) {

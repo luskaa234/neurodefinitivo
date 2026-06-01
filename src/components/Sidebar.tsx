@@ -1,28 +1,30 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  DollarSign,
-  Settings,
-  FileText,
-  MessageSquare,
-  LogOut,
-  Brain,
-  Stethoscope,
-  User,
-  CalendarCheck,
   AlertTriangle,
-  TestTube,
-  Menu,
+  Brain,
+  Calendar,
+  CalendarCheck,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
+  DollarSign,
+  FileText,
+  Landmark,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Bell,
+  Settings,
+  Stethoscope,
+  User,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { DEFAULT_SETTINGS, loadStoredSettings, type AppSettings } from "@/lib/appSettings";
@@ -31,6 +33,12 @@ interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
 }
+
+type MenuItem = {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+};
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { user, logout } = useAuth();
@@ -57,8 +65,11 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
     };
   }, []);
 
-  const getMenuItems = () => {
-    const baseItems = [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }];
+  const getMenuItems = (): MenuItem[] => {
+    const baseItems: MenuItem[] = [
+      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ];
+    const profileItem: MenuItem = { id: "perfil", label: "Meu Perfil", icon: User };
 
     switch (user?.role) {
       case "admin":
@@ -69,13 +80,21 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           { id: "pacientes", label: "Pacientes", icon: Users },
           { id: "agendamento", label: "Agendamento", icon: Calendar },
           { id: "financeiro", label: "Financeiro", icon: DollarSign },
+          { id: "admin-financeiro-tabela-valores", label: "Tabela de Valores", icon: Landmark },
           { id: "prontuarios", label: "Prontuários", icon: FileText },
+          { id: "avaliacoes", label: "Avaliações", icon: ClipboardCheck },
           { id: "whatsapp", label: "WhatsApp", icon: MessageSquare },
+          { id: "notificacoes", label: "Notificações", icon: Bell },
           { id: "configuracoes", label: "Configurações", icon: Settings },
+          profileItem,
         ];
 
       case "financeiro":
-        return [...baseItems, { id: "financeiro", label: "Financeiro", icon: DollarSign }];
+        return [
+          ...baseItems,
+          { id: "financeiro", label: "Financeiro", icon: DollarSign },
+          profileItem,
+        ];
 
       case "agendamento":
         return [
@@ -84,6 +103,8 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           { id: "agendamento", label: "Agendamento", icon: Calendar },
           { id: "pacientes", label: "Pacientes", icon: Users },
           { id: "whatsapp", label: "WhatsApp", icon: MessageSquare },
+          { id: "notificacoes", label: "Notificações", icon: Bell },
+          profileItem,
         ];
 
       case "medico":
@@ -93,7 +114,8 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           { id: "minhas-consultas", label: "Minhas Consultas", icon: CalendarCheck },
           { id: "justificar-falta", label: "Justificar Falta", icon: AlertTriangle },
           { id: "prontuarios", label: "Prontuários", icon: FileText },
-          { id: "perfil", label: "Meu Perfil", icon: User },
+          { id: "notificacoes", label: "Notificações", icon: Bell },
+          profileItem,
         ];
 
       case "paciente":
@@ -102,6 +124,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           { id: "meus-agendamentos", label: "Meus Agendamentos", icon: Calendar },
           { id: "financeiro", label: "Financeiro", icon: DollarSign },
           { id: "prontuarios", label: "Meus Prontuários", icon: FileText },
+          { id: "notificacoes", label: "Notificações", icon: Bell },
         ];
 
       default:
@@ -113,56 +136,68 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
   return (
     <>
-      {/* Botão Mobile */}
       {isMobile && (
-        <div className="fixed top-3 left-3 z-50">
+        <div className="fixed left-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setIsOpen(!isOpen)}
-            className="bg-white shadow rounded-full h-10 w-10 p-0"
+            className="h-10 w-10 rounded-full bg-white p-0 shadow md:h-11 md:w-11"
+            aria-label="Abrir menu"
           >
             <Menu className="h-6 w-6 text-gray-700" />
           </Button>
         </div>
       )}
 
-      {/* Sidebar Desktop */}
       {!isMobile && (
-        <div
-          className={cn(
-            "hidden md:flex flex-col h-screen bg-sidebar/95 backdrop-blur-md border-r border-sidebar-border/80 shadow-xl transition-all duration-300",
-            isCollapsed ? "w-20" : "w-72"
-          )}
-        >
-          <Header collapsed={isCollapsed} settings={appSettings} />
-          <MenuList
-            menuItems={menuItems}
-            activeSection={activeSection}
-            onSectionChange={onSectionChange}
-            collapsed={isCollapsed}
+        <>
+          <div
+            aria-hidden="true"
+            className={cn(
+              "hidden h-dvh shrink-0 transition-all duration-300 md:block",
+              isCollapsed ? "w-20" : "w-64 xl:w-72"
+            )}
           />
-          <Footer user={user} logout={logout} collapsed={isCollapsed} />
-
-          {/* Botão colapso */}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="absolute -right-3 top-20 bg-white border rounded-full p-1 shadow hover:bg-gray-100"
+          <aside
+            className={cn(
+              "fixed inset-y-0 left-0 z-30 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95 shadow-xl backdrop-blur-md transition-all duration-300 md:flex",
+              isCollapsed ? "w-20" : "w-64 xl:w-72"
+            )}
           >
-            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
-        </div>
+            <Header collapsed={isCollapsed} settings={appSettings} />
+            <MenuList
+              menuItems={menuItems}
+              activeSection={activeSection}
+              onSectionChange={onSectionChange}
+              collapsed={isCollapsed}
+            />
+            <Footer user={user} logout={logout} collapsed={isCollapsed} />
+
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="absolute -right-3 top-20 z-10 rounded-full border bg-white p-1 shadow hover:bg-gray-100"
+              aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          </aside>
+        </>
       )}
 
-      {/* Sidebar Mobile */}
       {isMobile && (
         <div
           className={cn(
-            "fixed inset-0 z-40 flex md:hidden transition-transform duration-300",
+            "fixed inset-0 z-40 flex transition-transform duration-300 md:hidden",
             isOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <div className="w-72 bg-sidebar/95 backdrop-blur-md shadow-xl flex flex-col text-base animate-slide-in">
+          <aside className="flex h-full w-[min(18rem,86vw)] flex-col bg-sidebar/95 text-base shadow-xl backdrop-blur-md animate-slide-in">
             <Header collapsed={false} settings={appSettings} />
             <MenuList
               menuItems={menuItems}
@@ -174,7 +209,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               collapsed={false}
             />
             <Footer user={user} logout={logout} collapsed={false} />
-          </div>
+          </aside>
           <div className="flex-1 bg-black/50" onClick={() => setIsOpen(false)} />
         </div>
       )}
@@ -184,9 +219,10 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
 function Header({ collapsed, settings }: { collapsed: boolean; settings: AppSettings }) {
   const displayName = settings.site_short_name || settings.company_name || "Neuro";
+
   return (
     <div
-      className="flex h-16 items-center border-b px-4"
+      className="flex h-16 shrink-0 items-center border-b px-4"
       style={{
         background: `linear-gradient(90deg, ${settings.brand_primary}, ${settings.brand_accent})`,
       }}
@@ -195,12 +231,12 @@ function Header({ collapsed, settings }: { collapsed: boolean; settings: AppSett
         <img
           src={settings.logo_site_url}
           alt={displayName}
-          className="h-8 w-8 rounded-md object-contain mr-2 bg-white/10 p-1"
+          className="mr-2 h-8 w-8 rounded-md bg-white/10 object-contain p-1"
         />
       ) : (
-        <Brain className="h-7 w-7 text-white mr-2" />
+        <Brain className="mr-2 h-7 w-7 text-white" />
       )}
-      {!collapsed && <span className="text-lg font-bold text-white">{displayName}</span>}
+      {!collapsed && <span className="truncate text-lg font-bold text-white">{displayName}</span>}
     </div>
   );
 }
@@ -211,29 +247,30 @@ function MenuList({
   onSectionChange,
   collapsed,
 }: {
-  menuItems: any[];
+  menuItems: MenuItem[];
   activeSection: string;
   onSectionChange: (id: string) => void;
   collapsed: boolean;
 }) {
   return (
-    <ScrollArea className="flex-1 px-3 py-4">
+    <ScrollArea className="min-h-0 flex-1 px-3 py-4">
       <div className="space-y-2">
         {menuItems.map((item) => (
           <Button
             key={item.id}
             variant={activeSection === item.id ? "secondary" : "ghost"}
             className={cn(
-              "w-full justify-start h-11 text-base transition-all duration-200 rounded-md",
+              "h-11 w-full justify-start rounded-md text-base transition-all duration-200",
               activeSection === item.id
-                ? "bg-secondary text-primary border-l-4 border-l-primary shadow"
+                ? "border-l-4 border-l-primary bg-secondary text-primary shadow"
                 : "hover:bg-secondary/70",
-              collapsed ? "px-2 justify-center" : "px-3"
+              collapsed ? "justify-center px-2" : "px-3"
             )}
             onClick={() => onSectionChange(item.id)}
+            title={collapsed ? item.label : undefined}
           >
-            <item.icon className="h-5 w-5" />
-            {!collapsed && <span className="ml-3">{item.label}</span>}
+            <item.icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span className="ml-3 truncate">{item.label}</span>}
           </Button>
         ))}
       </div>
@@ -247,16 +284,16 @@ function Footer({
   collapsed,
 }: {
   user: any;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   collapsed: boolean;
 }) {
   return (
-    <div className="border-t border-sidebar-border p-3 bg-sidebar-accent">
+    <div className="shrink-0 border-t border-sidebar-border bg-sidebar-accent p-3">
       {!collapsed && (
         <div className="mb-2 text-xs">
-          <p className="font-medium text-gray-800 truncate">{user?.name}</p>
-          <p className="text-gray-500 capitalize flex items-center">
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+          <p className="truncate font-medium text-gray-800">{user?.name}</p>
+          <p className="flex items-center text-gray-500 capitalize">
+            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-green-500" />
             {user?.role}
           </p>
         </div>
@@ -265,12 +302,12 @@ function Footer({
       <Button
         variant="ghost"
         className={cn(
-          "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors h-10 text-base",
+          "h-10 w-full justify-start text-base text-red-600 transition-colors hover:bg-red-50 hover:text-red-700",
           collapsed && "justify-center"
         )}
         onClick={logout}
       >
-        <LogOut className="h-4 w-4" />
+        <LogOut className="h-4 w-4 shrink-0" />
         {!collapsed && <span className="ml-2">Sair</span>}
       </Button>
     </div>

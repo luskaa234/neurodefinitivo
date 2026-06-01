@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS, applySettingsToDocument, loadStoredSettings, saveSett
 import { formatDateTimeBR, nowLocal } from '@/utils/date';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCurrentSubscription, getPushPermission, isPushSupported, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
+import { createAuditLog } from '@/lib/audit';
 
 const cnpjSchema = z
   .string()
@@ -28,6 +29,9 @@ const cnpjSchema = z
   }, "CNPJ inválido");
 
 const hexColorSchema = z.string().regex(/^#([0-9a-fA-F]{6})$/, "Cor inválida");
+const LEGACY_FIXED_WHATSAPP = "98974003414";
+const cleanLegacyWhatsApp = (value?: string | null) =>
+  String(value || "").replace(/\D/g, "") === LEGACY_FIXED_WHATSAPP ? "" : String(value || "");
 
 const settingsSchema = z.object({
   company_name: z.string().min(1, 'Nome da empresa é obrigatório'),
@@ -35,7 +39,10 @@ const settingsSchema = z.object({
   company_address: z.string().min(1, 'Endereço é obrigatório'),
   company_phone: z.string().min(1, 'Telefone é obrigatório'),
   company_email: z.string().email('Email inválido'),
-  whatsapp_number: z.string().min(10, 'WhatsApp deve ter pelo menos 10 dígitos'),
+  whatsapp_number: z.string().refine((value) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.length === 0 || digits.length >= 10;
+  }, 'WhatsApp deve estar vazio ou ter pelo menos 10 dígitos'),
   push_global_enabled: z.boolean().optional(),
   site_name: z.string().min(1, 'Nome do site é obrigatório'),
   site_short_name: z.string().optional().or(z.literal("")),
@@ -49,7 +56,18 @@ const settingsSchema = z.object({
   brand_background: hexColorSchema,
   brand_sidebar: hexColorSchema,
   working_hours_start: z.string().min(1, 'Horário de início é obrigatório'),
-  working_hours_end: z.string().min(1, 'Horário de fim é obrigatório')
+  working_hours_end: z.string().min(1, 'Horário de fim é obrigatório'),
+  access_require_admin_for_settings: z.boolean().optional(),
+  access_allow_financeiro_reports: z.boolean().optional(),
+  access_allow_recepcao_schedule: z.boolean().optional(),
+  access_allow_profissional_records: z.boolean().optional(),
+  security_audit_enabled: z.boolean().optional(),
+  security_session_timeout_minutes: z.coerce.number().min(5, "Mínimo de 5 minutos").max(480, "Máximo de 480 minutos"),
+  security_require_strong_password: z.boolean().optional(),
+  security_notify_admin_changes: z.boolean().optional(),
+  backup_auto_enabled: z.boolean().optional(),
+  backup_frequency: z.enum(["daily", "weekly", "monthly"]),
+  backup_include_audit_logs: z.boolean().optional()
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -110,13 +128,13 @@ export function SystemSettings() {
       const parsedSettings = loadStoredSettings();
       const normalized: AppSettings = {
         ...parsedSettings,
-        logo_site_url: DEFAULT_SETTINGS.logo_site_url,
-        logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
-        brand_primary: DEFAULT_SETTINGS.brand_primary,
-        brand_secondary: DEFAULT_SETTINGS.brand_secondary,
-        brand_accent: DEFAULT_SETTINGS.brand_accent,
-        brand_background: DEFAULT_SETTINGS.brand_background,
-        brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
+        logo_site_url: parsedSettings.logo_site_url || settings.logo_site_url || DEFAULT_SETTINGS.logo_site_url,
+        logo_pwa_url: parsedSettings.logo_pwa_url || settings.logo_pwa_url || DEFAULT_SETTINGS.logo_pwa_url,
+        brand_primary: parsedSettings.brand_primary || DEFAULT_SETTINGS.brand_primary,
+        brand_secondary: parsedSettings.brand_secondary || DEFAULT_SETTINGS.brand_secondary,
+        brand_accent: parsedSettings.brand_accent || DEFAULT_SETTINGS.brand_accent,
+        brand_background: parsedSettings.brand_background || DEFAULT_SETTINGS.brand_background,
+        brand_sidebar: parsedSettings.brand_sidebar || DEFAULT_SETTINGS.brand_sidebar,
       };
       setSettings(normalized);
       setPushGlobalEnabled(!!normalized.push_global_enabled);
@@ -141,6 +159,17 @@ export function SystemSettings() {
       setValue('brand_sidebar', normalized.brand_sidebar);
       setValue('working_hours_start', normalized.working_hours?.start || '08:00');
       setValue('working_hours_end', normalized.working_hours?.end || '21:00');
+      setValue('access_require_admin_for_settings', normalized.access_control.require_admin_for_settings);
+      setValue('access_allow_financeiro_reports', normalized.access_control.allow_financeiro_reports);
+      setValue('access_allow_recepcao_schedule', normalized.access_control.allow_recepcao_schedule);
+      setValue('access_allow_profissional_records', normalized.access_control.allow_profissional_records);
+      setValue('security_audit_enabled', normalized.security.audit_enabled);
+      setValue('security_session_timeout_minutes', normalized.security.session_timeout_minutes);
+      setValue('security_require_strong_password', normalized.security.require_strong_password);
+      setValue('security_notify_admin_changes', normalized.security.notify_admin_changes);
+      setValue('backup_auto_enabled', normalized.backup.auto_backup_enabled);
+      setValue('backup_frequency', normalized.backup.backup_frequency);
+      setValue('backup_include_audit_logs', normalized.backup.include_audit_logs);
       applySettingsToDocument(normalized);
     } catch (error) {
       console.error('Erro ao carregar configurações:', error);
@@ -156,10 +185,35 @@ export function SystemSettings() {
       const merged = {
         ...DEFAULT_SETTINGS,
         ...(data.settings || {}),
+        working_hours: {
+          ...DEFAULT_SETTINGS.working_hours,
+          ...(data.settings.working_hours || {}),
+        },
+        access_control: {
+          ...DEFAULT_SETTINGS.access_control,
+          ...(data.settings.access_control || {}),
+        },
+        security: {
+          ...DEFAULT_SETTINGS.security,
+          ...(data.settings.security || {}),
+        },
+        backup: {
+          ...DEFAULT_SETTINGS.backup,
+          ...(data.settings.backup || {}),
+        },
       } as AppSettings;
+      const remoteWhatsApp = merged.whatsapp_number;
+      merged.whatsapp_number = cleanLegacyWhatsApp(merged.whatsapp_number);
       saveSettings(merged);
-      setSettings(merged);
+      if (remoteWhatsApp !== merged.whatsapp_number) {
+        await fetch("/api/settings/global", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: merged }),
+        }).catch(() => undefined);
+      }
       setPushGlobalEnabled(!!merged.push_global_enabled);
+      loadSettings();
       applySettingsToDocument(merged);
       window.dispatchEvent(new Event("app-settings-updated"));
     } catch {
@@ -284,35 +338,59 @@ export function SystemSettings() {
         company_address: data.company_address,
         company_phone: data.company_phone,
         company_email: data.company_email,
-        whatsapp_number: data.whatsapp_number,
+        whatsapp_number: cleanLegacyWhatsApp(data.whatsapp_number).replace(/\D/g, ""),
         push_global_enabled: data.push_global_enabled ?? false,
         site_name: data.site_name,
         site_short_name: data.site_short_name || "",
         site_description: data.site_description || "",
         site_url: data.site_url || "",
-        logo_site_url: DEFAULT_SETTINGS.logo_site_url,
-        logo_pwa_url: DEFAULT_SETTINGS.logo_pwa_url,
-        brand_primary: DEFAULT_SETTINGS.brand_primary,
-        brand_secondary: DEFAULT_SETTINGS.brand_secondary,
-        brand_accent: DEFAULT_SETTINGS.brand_accent,
-        brand_background: DEFAULT_SETTINGS.brand_background,
-        brand_sidebar: DEFAULT_SETTINGS.brand_sidebar,
+        logo_site_url: data.logo_site_url || settings.logo_site_url || DEFAULT_SETTINGS.logo_site_url,
+        logo_pwa_url: data.logo_pwa_url || settings.logo_pwa_url || DEFAULT_SETTINGS.logo_pwa_url,
+        brand_primary: data.brand_primary,
+        brand_secondary: data.brand_secondary,
+        brand_accent: data.brand_accent,
+        brand_background: data.brand_background,
+        brand_sidebar: data.brand_sidebar,
         working_hours: {
           start: data.working_hours_start,
           end: data.working_hours_end
-        }
+        },
+        access_control: {
+          require_admin_for_settings: data.access_require_admin_for_settings ?? true,
+          allow_financeiro_reports: data.access_allow_financeiro_reports ?? true,
+          allow_recepcao_schedule: data.access_allow_recepcao_schedule ?? true,
+          allow_profissional_records: data.access_allow_profissional_records ?? true,
+        },
+        security: {
+          audit_enabled: data.security_audit_enabled ?? true,
+          session_timeout_minutes: Number(data.security_session_timeout_minutes || 60),
+          require_strong_password: data.security_require_strong_password ?? true,
+          notify_admin_changes: data.security_notify_admin_changes ?? true,
+        },
+        backup: {
+          auto_backup_enabled: data.backup_auto_enabled ?? false,
+          backup_frequency: data.backup_frequency,
+          include_audit_logs: data.backup_include_audit_logs ?? true,
+          last_backup_at: settings.backup.last_backup_at || "",
+        },
       };
       
       saveSettings(newSettings);
       setSettings(newSettings);
       applySettingsToDocument(newSettings);
       window.dispatchEvent(new Event("app-settings-updated"));
-      fetch("/api/settings/global", {
+      await fetch("/api/settings/global", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings: newSettings }),
-      }).catch(() => {
-        // ignore
+      });
+      await createAuditLog({
+        user: user ? { id: user.id, name: user.name } : null,
+        action: "settings.update",
+        entity: "app_settings",
+        entityId: "global",
+        oldValue: settings,
+        newValue: newSettings,
       });
       
       toast.success('✅ Configurações salvas e aplicadas com sucesso!');
@@ -348,6 +426,14 @@ export function SystemSettings() {
     }).catch(() => {
       // ignore
     });
+    createAuditLog({
+      user: user ? { id: user.id, name: user.name } : null,
+      action: "settings.update",
+      entity: "app_settings",
+      entityId: "global",
+      oldValue: settings,
+      newValue: nextSettings,
+    });
     toast.success(
       value
         ? "Notificações globais ativadas para todos."
@@ -358,11 +444,16 @@ export function SystemSettings() {
   const testWhatsApp = async () => {
     try {
       setIsTestingWhatsApp(true);
+      const clinicWhatsApp = String(watchWhatsApp || "").replace(/\D/g, "");
+      if (clinicWhatsApp.length < 10) {
+        toast.error("Informe o WhatsApp da clínica antes de testar.");
+        return;
+      }
       
-      const testMessage = `🧪 TESTE DO SISTEMA NEURO INTEGRAR 🧪\n\nEste é um teste do sistema de WhatsApp.\n\nNúmero da clínica: ${watchWhatsApp || '98974003414'}\nData/Hora: ${formatDateTimeBR(nowLocal())}\n\n✅ Sistema funcionando corretamente!`;
+      const testMessage = `🧪 TESTE DO SISTEMA NEURO INTEGRAR 🧪\n\nEste é um teste do sistema de WhatsApp.\n\nNúmero da clínica: ${clinicWhatsApp}\nData/Hora: ${formatDateTimeBR(nowLocal())}\n\n✅ Sistema funcionando corretamente!`;
       
       // Abrir WhatsApp com mensagem de teste
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=55${watchWhatsApp || '98974003414'}&text=${encodeURIComponent(testMessage)}`;
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=55${clinicWhatsApp}&text=${encodeURIComponent(testMessage)}`;
       
       window.open(whatsappUrl, '_blank');
       
@@ -370,7 +461,7 @@ export function SystemSettings() {
       const messageHistory = JSON.parse(localStorage.getItem('whatsapp-messages') || '[]');
       const testMessageRecord = {
         id: Date.now().toString(),
-        from_clinic: watchWhatsApp || '98974003414',
+        from_clinic: clinicWhatsApp,
         to_patient: 'TESTE',
         message: testMessage,
         sent_at: new Date().toISOString(),
@@ -423,6 +514,82 @@ export function SystemSettings() {
   };
 
   const timeSlotPreview = generateTimeSlotPreview();
+  const goToSection = (section: string) => {
+    window.location.hash = `#${section}`;
+  };
+  const exportBackup = () => {
+    const backupSettings: AppSettings = {
+      ...settings,
+      backup: {
+        ...settings.backup,
+        last_backup_at: new Date().toISOString(),
+      },
+    };
+    const payload = {
+      exported_at: backupSettings.backup.last_backup_at,
+      settings: backupSettings,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "backup-configuracoes-neuro.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    saveSettings(backupSettings);
+    setSettings(backupSettings);
+    toast.success("Backup de configurações exportado.");
+  };
+
+  const importBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || "{}"));
+        const imported = parsed.settings || parsed;
+        const nextSettings: AppSettings = {
+          ...DEFAULT_SETTINGS,
+          ...settings,
+          ...imported,
+          working_hours: {
+            ...DEFAULT_SETTINGS.working_hours,
+            ...(imported.working_hours || {}),
+          },
+          access_control: {
+            ...DEFAULT_SETTINGS.access_control,
+            ...(imported.access_control || {}),
+          },
+          security: {
+            ...DEFAULT_SETTINGS.security,
+            ...(imported.security || {}),
+          },
+          backup: {
+            ...DEFAULT_SETTINGS.backup,
+            ...(imported.backup || {}),
+            last_backup_at: new Date().toISOString(),
+          },
+        };
+        saveSettings(nextSettings);
+        setSettings(nextSettings);
+        applySettingsToDocument(nextSettings);
+        window.dispatchEvent(new Event("app-settings-updated"));
+        await fetch("/api/settings/global", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: nextSettings }),
+        }).catch(() => undefined);
+        loadSettings();
+        toast.success("Backup importado e aplicado.");
+      } catch {
+        toast.error("Arquivo de backup inválido.");
+      } finally {
+        event.target.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div className="space-y-6 px-2 sm:px-4">
@@ -440,6 +607,9 @@ export function SystemSettings() {
           <TabsTrigger value="whatsapp">📱 WhatsApp</TabsTrigger>
           <TabsTrigger value="notifications">🔔 Notificações</TabsTrigger>
           <TabsTrigger value="appearance">🎨 Aparência</TabsTrigger>
+          <TabsTrigger value="access">Acessos</TabsTrigger>
+          <TabsTrigger value="security">Segurança</TabsTrigger>
+          <TabsTrigger value="backup">Backup</TabsTrigger>
         </TabsList>
 
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -613,14 +783,14 @@ export function SystemSettings() {
                   <Label htmlFor="whatsapp_number">📱 Número do WhatsApp da Clínica</Label>
                   <Input
                     id="whatsapp_number"
-                    placeholder="98974003414 (apenas números)"
+                    placeholder="Digite o WhatsApp da clínica"
                     {...register('whatsapp_number')}
                   />
                   {errors.whatsapp_number && (
                     <p className="text-sm text-red-600">{errors.whatsapp_number.message}</p>
                   )}
                   <p className="text-xs text-gray-500">
-                    Digite apenas números: DDD + número (ex: 98974003414)
+                    Digite apenas números: DDD + número. Este campo não usa número fixo.
                   </p>
                 </div>
 
@@ -956,6 +1126,86 @@ export function SystemSettings() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="access">
+            <Card>
+              <CardHeader>
+                <CardTitle>Usuários, Perfis e Permissões</CardTitle>
+                <CardDescription>Controle os acessos principais e navegue para a gestão completa de usuários.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ToggleSetting label="Somente ADMIN altera configurações" checked={watch("access_require_admin_for_settings") ?? true} onCheckedChange={(value) => setValue("access_require_admin_for_settings", value)} />
+                  <ToggleSetting label="Financeiro acessa relatórios" checked={watch("access_allow_financeiro_reports") ?? true} onCheckedChange={(value) => setValue("access_allow_financeiro_reports", value)} />
+                  <ToggleSetting label="Recepção gerencia agenda" checked={watch("access_allow_recepcao_schedule") ?? true} onCheckedChange={(value) => setValue("access_allow_recepcao_schedule", value)} />
+                  <ToggleSetting label="Profissionais acessam prontuários" checked={watch("access_allow_profissional_records") ?? true} onCheckedChange={(value) => setValue("access_allow_profissional_records", value)} />
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Button type="button" variant="outline" onClick={() => goToSection("usuarios")}>Gerenciar usuários</Button>
+                  <Button type="button" variant="outline" onClick={() => goToSection("medicos")}>Gerenciar profissionais</Button>
+                  <Button type="button" variant="outline" onClick={() => goToSection("admin-financeiro-tabela-valores")}>Permissões administrativas</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="security">
+            <Card>
+              <CardHeader>
+                <CardTitle>Segurança e Auditoria</CardTitle>
+                <CardDescription>Defina regras de segurança aplicadas ao sistema e registre alterações administrativas.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ToggleSetting label="Auditoria ativa" checked={watch("security_audit_enabled") ?? true} onCheckedChange={(value) => setValue("security_audit_enabled", value)} />
+                  <ToggleSetting label="Exigir senha forte" checked={watch("security_require_strong_password") ?? true} onCheckedChange={(value) => setValue("security_require_strong_password", value)} />
+                  <ToggleSetting label="Avisar alterações administrativas" checked={watch("security_notify_admin_changes") ?? true} onCheckedChange={(value) => setValue("security_notify_admin_changes", value)} />
+                  <div className="space-y-2">
+                    <Label htmlFor="security_session_timeout_minutes">Tempo de sessão (minutos)</Label>
+                    <Input id="security_session_timeout_minutes" type="number" min={5} max={480} {...register("security_session_timeout_minutes")} />
+                    {errors.security_session_timeout_minutes && <p className="text-sm text-red-600">{errors.security_session_timeout_minutes.message}</p>}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
+                  <p>Perfil atual: <strong>{user?.role}</strong></p>
+                  <p>Usuário: <strong>{user?.name}</strong></p>
+                  <p>Persistência: <strong>Supabase/PostgreSQL + fallback local</strong></p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="backup">
+            <Card>
+              <CardHeader>
+                <CardTitle>Backup</CardTitle>
+                <CardDescription>Exporte, restaure e programe cópias das configurações atuais.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ToggleSetting label="Backup automático" checked={watch("backup_auto_enabled") ?? false} onCheckedChange={(value) => setValue("backup_auto_enabled", value)} />
+                  <ToggleSetting label="Incluir logs de auditoria no backup" checked={watch("backup_include_audit_logs") ?? true} onCheckedChange={(value) => setValue("backup_include_audit_logs", value)} />
+                  <div className="space-y-2">
+                    <Label>Frequência</Label>
+                    <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={watch("backup_frequency") || "weekly"} onChange={(e) => setValue("backup_frequency", e.target.value as "daily" | "weekly" | "monthly")}>
+                      <option value="daily">Diário</option>
+                      <option value="weekly">Semanal</option>
+                      <option value="monthly">Mensal</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Restaurar backup</Label>
+                    <Input type="file" accept="application/json" onChange={importBackup} />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" onClick={exportBackup}>Exportar backup das configurações</Button>
+                  <Button type="button" variant="outline" onClick={() => toast.success("Configuração de backup pronta. Salve para aplicar.")}>Validar backup</Button>
+                </div>
+                <p className="text-sm text-slate-600">Último backup: {settings.backup.last_backup_at ? formatDateTimeBR(settings.backup.last_backup_at) : "Ainda não exportado/importado"}</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <div className="flex justify-end pt-6">
             <Button 
               type="submit" 
@@ -984,7 +1234,7 @@ export function SystemSettings() {
         <div className="mt-2 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
             <p className="text-green-700">
-              <strong>📱 WhatsApp:</strong> {settings.whatsapp_number || '98974003414'}
+              <strong>📱 WhatsApp:</strong> {settings.whatsapp_number || 'Não configurado'}
             </p>
             <p className="text-green-700">
               <strong>⏰ Horários:</strong> {settings.working_hours.start} às {settings.working_hours.end}
@@ -1009,6 +1259,23 @@ export function SystemSettings() {
           ✅ <strong>Todas as configurações estão funcionando e sendo aplicadas em tempo real!</strong>
         </p>
       </div>
+    </div>
+  );
+}
+
+function ToggleSetting({
+  label,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border bg-white p-4">
+      <Label className="text-sm font-medium">{label}</Label>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );
 }

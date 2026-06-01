@@ -7,7 +7,9 @@ import { Sidebar } from "@/components/Sidebar";
 import { Dashboard } from "@/components/Dashboard";
 import ExcelScheduleGrid from "@/components/modules/ExcelScheduleGrid";
 import { FinancialModule } from "@/components/modules/FinancialModule";
+import { AdminFinanceiroTabelaValores } from "@/components/modules/AdminFinanceiroTabelaValores";
 import { WhatsAppModule } from "@/components/modules/WhatsAppModule";
+import { NotificationCenter } from "@/components/modules/NotificationCenter";
 import { PatientManagement } from "@/components/modules/PatientManagement";
 import { UserManagement } from "@/components/modules/UserManagement";
 import { DoctorManagement } from "@/components/modules/DoctorManagement";
@@ -16,7 +18,6 @@ import { MedicalRecords } from "@/components/modules/MedicalRecords";
 import { Evaluations } from "@/components/modules/Evaluations";
 import { UserProfile } from "@/components/modules/UserProfile";
 import { SystemSettings } from "@/components/modules/Settings";
-import { TestDeleteComponent } from "@/components/TestDeleteComponent";
 import { PatientDashboard } from "@/components/modules/PatientDashboard";
 import { PatientRecords } from "@/components/modules/PatientRecords";
 import { PatientFinance } from "@/components/modules/PatientFinance";
@@ -149,8 +150,22 @@ export default function Home() {
         return <ExcelScheduleGrid />;
       case "financeiro":
         return <FinancialModule />;
+      case "admin-financeiro-tabela-valores":
+        if (user.role !== "admin") {
+          return (
+            <div className="flex h-64 items-center justify-center">
+              <div className="text-center">
+                <h2 className="mb-2 text-2xl font-bold">Acesso negado</h2>
+                <p className="text-gray-600">Esta área é exclusiva para ADMIN.</p>
+              </div>
+            </div>
+          );
+        }
+        return <AdminFinanceiroTabelaValores />;
       case "whatsapp":
         return <WhatsAppModule />;
+      case "notificacoes":
+        return <NotificationCenter />;
       case "usuarios":
         return <UserManagement />;
       case "medicos":
@@ -171,8 +186,6 @@ export default function Home() {
         return <DoctorConsultations />;
       case "meus-pacientes":
         return <DoctorPatients />;
-      case "teste-exclusoes":
-        return <TestDeleteComponent />;
       default:
         return (
           <div className="flex items-center justify-center h-64">
@@ -189,14 +202,14 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-slate-100">
+      <div className="flex min-h-dvh overflow-hidden bg-gradient-to-br from-gray-50 via-white to-slate-100">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setSection}
         />
-        <main className="flex-1 overflow-auto">
-          <div className="p-3 sm:p-4 md:p-6 lg:p-8">
-            <div className="mb-3 flex justify-end">
+        <main className="min-h-dvh min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mx-auto w-full max-w-screen-2xl p-3 pt-16 sm:p-4 sm:pt-16 md:p-6 lg:p-8">
+            <div className="mb-3 flex justify-end md:justify-end">
               <div className="rounded-full border border-purple-200 bg-white/90 px-4 py-1 text-xs font-semibold text-purple-700 shadow-sm">
                 {`Hoje é ${formatDateFullBR(nowLocal())}`}
               </div>

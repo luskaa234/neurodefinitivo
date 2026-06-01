@@ -21,6 +21,24 @@ export interface AppSettings {
     start: string;
     end: string;
   };
+  access_control: {
+    require_admin_for_settings: boolean;
+    allow_financeiro_reports: boolean;
+    allow_recepcao_schedule: boolean;
+    allow_profissional_records: boolean;
+  };
+  security: {
+    audit_enabled: boolean;
+    session_timeout_minutes: number;
+    require_strong_password: boolean;
+    notify_admin_changes: boolean;
+  };
+  backup: {
+    auto_backup_enabled: boolean;
+    backup_frequency: "daily" | "weekly" | "monthly";
+    include_audit_logs: boolean;
+    last_backup_at?: string;
+  };
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -29,7 +47,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   company_address: "",
   company_phone: "",
   company_email: "",
-  whatsapp_number: "98974003414",
+  whatsapp_number: "",
   push_global_enabled: false,
   site_name: "Neuro Integrar",
   site_short_name: "Neuro Integrar",
@@ -46,6 +64,24 @@ export const DEFAULT_SETTINGS: AppSettings = {
     start: "08:00",
     end: "21:00",
   },
+  access_control: {
+    require_admin_for_settings: true,
+    allow_financeiro_reports: true,
+    allow_recepcao_schedule: true,
+    allow_profissional_records: true,
+  },
+  security: {
+    audit_enabled: true,
+    session_timeout_minutes: 60,
+    require_strong_password: true,
+    notify_admin_changes: true,
+  },
+  backup: {
+    auto_backup_enabled: false,
+    backup_frequency: "weekly",
+    include_audit_logs: true,
+    last_backup_at: "",
+  },
 };
 
 const isHexColor = (value: string) => /^#([0-9a-fA-F]{6})$/.test(value);
@@ -53,12 +89,20 @@ const isHexColor = (value: string) => /^#([0-9a-fA-F]{6})$/.test(value);
 const normalizeColor = (value: string, fallback: string) =>
   isHexColor(value) ? value : fallback;
 
+const LEGACY_FIXED_WHATSAPP = "98974003414";
+
 const mergeSettings = (raw: Partial<AppSettings>): AppSettings => {
   const legacyLogo = (raw as { logo_url?: string }).logo_url || "";
+  const rawWhatsAppDigits = String(raw.whatsapp_number || "").replace(/\D/g, "");
+  const whatsappNumber =
+    raw.whatsapp_number && rawWhatsAppDigits !== LEGACY_FIXED_WHATSAPP
+      ? raw.whatsapp_number
+      : DEFAULT_SETTINGS.whatsapp_number;
 
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
+    whatsapp_number: whatsappNumber,
     push_global_enabled:
       typeof raw.push_global_enabled === "boolean"
         ? raw.push_global_enabled
@@ -73,6 +117,20 @@ const mergeSettings = (raw: Partial<AppSettings>): AppSettings => {
     working_hours: {
       start: raw.working_hours?.start || DEFAULT_SETTINGS.working_hours.start,
       end: raw.working_hours?.end || DEFAULT_SETTINGS.working_hours.end,
+    },
+    access_control: {
+      ...DEFAULT_SETTINGS.access_control,
+      ...(raw.access_control || {}),
+    },
+    security: {
+      ...DEFAULT_SETTINGS.security,
+      ...(raw.security || {}),
+      session_timeout_minutes: Number(raw.security?.session_timeout_minutes || DEFAULT_SETTINGS.security.session_timeout_minutes),
+    },
+    backup: {
+      ...DEFAULT_SETTINGS.backup,
+      ...(raw.backup || {}),
+      backup_frequency: raw.backup?.backup_frequency || DEFAULT_SETTINGS.backup.backup_frequency,
     },
   };
 };

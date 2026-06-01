@@ -77,10 +77,18 @@
 @layer base {
   * {
     @apply border-border;
+    min-width: 0;
+  }
+  html {
+    min-width: 320px;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
   }
   body {
     @apply bg-background text-foreground;
     -webkit-text-size-adjust: 100%;
+    min-width: 320px;
+    overflow-x: hidden;
   }
   img,
   video,
@@ -88,6 +96,54 @@
   svg {
     max-width: 100%;
     height: auto;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    max-width: 100%;
+  }
+}
+
+@layer components {
+  .responsive-table-wrap,
+  [data-radix-scroll-area-viewport],
+  .overflow-x-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .recharts-responsive-container,
+  .recharts-wrapper {
+    max-width: 100%;
+  }
+
+  [role="dialog"] {
+    overscroll-behavior: contain;
+  }
+}
+
+@layer utilities {
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+
+  .h-dvh {
+    height: 100dvh;
+  }
+
+  @media (max-width: 420px) {
+    .xs-stack {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  @media (min-width: 1920px) {
+    .tv-readable {
+      max-width: 1680px;
+      margin-inline: auto;
+    }
   }
 }
 

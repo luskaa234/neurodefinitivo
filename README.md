@@ -13,4 +13,4 @@ Sistema completo para gestão de clínicas neurológicas com agendamento, WhatsA
 - ✅ **Gestão de Usuários** - Controle de acesso por perfil
 - ✅ **Dashboard Personalizado** - Visão específica por tipo de usuário
 
-]
+

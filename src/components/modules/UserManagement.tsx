@@ -79,6 +79,17 @@ export function UserManagement() {
   const { users, addUser, reloadAll } = useApp();
   const { loginAsUser, user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isSchedulingUser = currentUser?.role === "agendamento";
+  const canAccessUsers = isAdmin || isSchedulingUser;
+  const canAccessUser = (target: User | null | undefined) =>
+    !!target && (isAdmin || target.role !== "admin");
+  const roleOptions = [
+    ...(isAdmin ? [{ value: "admin", label: "Administrador" }] : []),
+    { value: "financeiro", label: "Financeiro" },
+    { value: "agendamento", label: "Agendamento" },
+    { value: "medico", label: "Médico" },
+    { value: "paciente", label: "Paciente" },
+  ] as const;
 
   // modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -226,6 +237,10 @@ export function UserManagement() {
 
   // abrir modal visualizar
   const openView = (user: User) => {
+    if (!canAccessUser(user)) {
+      toast.error("Este usuário administrativo é restrito ao admin.");
+      return;
+    }
     setSelectedUser(user);
     setShowViewPassword(false);
     setIsViewOpen(true);
@@ -233,6 +248,10 @@ export function UserManagement() {
 
   // abrir modal editar
   const openEdit = (user: User) => {
+    if (!canAccessUser(user)) {
+      toast.error("Este usuário administrativo é restrito ao admin.");
+      return;
+    }
     setEditingUser(user);
     setIsEditOpen(true);
   };
@@ -250,6 +269,14 @@ export function UserManagement() {
   // criar usuário
   const onCreate = async (data: UserFormData) => {
     try {
+      if (!canAccessUsers) {
+        toast.error("Você não tem permissão para criar usuários.");
+        return;
+      }
+      if (!isAdmin && data.role === "admin") {
+        toast.error("Apenas administradores podem criar usuário administrativo.");
+        return;
+      }
       // se email vazio, gerar
       let email = data.email && data.email.trim() !== "" ? data.email.trim() : generateEmailFromName(data.name);
       // se email já em uso, garantir suffix
@@ -305,6 +332,14 @@ export function UserManagement() {
   const onEdit = async (data: UserFormData) => {
     if (!editingUser) return;
     try {
+      if (!canAccessUser(editingUser)) {
+        toast.error("Este usuário administrativo é restrito ao admin.");
+        return;
+      }
+      if (!isAdmin && data.role === "admin") {
+        toast.error("Apenas administradores podem definir usuário administrativo.");
+        return;
+      }
       // valida email único se alterado
       if (data.email && data.email.trim() !== "" && isEmailInUse(data.email.trim(), editingUser.id)) {
         toast.error("Email já está em uso por outro usuário.");
@@ -340,6 +375,11 @@ export function UserManagement() {
   // deletar usuário
   const handleDelete = async (id: string) => {
     try {
+      const targetUser = users.find((u) => u.id === id);
+      if (!isAdmin || !canAccessUser(targetUser)) {
+        toast.error("Apenas administradores podem excluir usuários.");
+        return;
+      }
       const { data: asPatient, error: patientErr } = await supabase
         .from("appointments")
         .select("id")
@@ -383,8 +423,12 @@ export function UserManagement() {
   };
 
   // filtered users
+  const visibleUsers = useMemo(() => {
+    return users.filter((u) => canAccessUser(u));
+  }, [users, isAdmin]);
+
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    return visibleUsers.filter((u) => {
       if (filterRole !== "todos" && u.role !== filterRole) return false;
       if (filterStatus === "ativos" && !u.is_active) return false;
       if (filterStatus === "inativos" && u.is_active) return false;
@@ -396,21 +440,21 @@ export function UserManagement() {
         (u.phone && normalize(u.phone).includes(q))
       );
     });
-  }, [users, filterRole, filterStatus, searchTerm]);
+  }, [visibleUsers, filterRole, filterStatus, searchTerm]);
 
-  const totalUsers = users.length;
-  const totalActive = users.filter((u) => u.is_active).length;
+  const totalUsers = visibleUsers.length;
+  const totalActive = visibleUsers.filter((u) => u.is_active).length;
   const totalInactive = totalUsers - totalActive;
-  const totalDoctors = users.filter((u) => u.role === "medico").length;
+  const totalDoctors = visibleUsers.filter((u) => u.role === "medico").length;
 
-  if (!isAdmin) {
+  if (!canAccessUsers) {
     return (
       <div className="flex min-h-[360px] items-center justify-center px-4">
         <Card className="w-full max-w-md border-red-100 shadow-sm">
           <CardHeader>
             <CardTitle className="text-gray-900">Acesso negado</CardTitle>
             <CardDescription>
-              Apenas administradores podem visualizar emails, senhas ou alterar usuários.
+              Apenas administradores e agendamento podem acessar usuários.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -475,11 +519,11 @@ export function UserManagement() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="admin">Administrador</SelectItem>
-              <SelectItem value="financeiro">Financeiro</SelectItem>
-              <SelectItem value="agendamento">Agendamento</SelectItem>
-              <SelectItem value="medico">Médico</SelectItem>
-              <SelectItem value="paciente">Paciente</SelectItem>
+              {roleOptions.map((role) => (
+                <SelectItem key={role.value} value={role.value}>
+                  {role.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -555,7 +599,7 @@ export function UserManagement() {
                           Completar cadastro
                         </Button>
                       )}
-                      {u.role !== "admin" && u.role !== "financeiro" && (
+                      {isAdmin && u.role !== "admin" && u.role !== "financeiro" && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -570,13 +614,15 @@ export function UserManagement() {
                       <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(u.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDelete(u.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -611,7 +657,7 @@ export function UserManagement() {
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <p className="text-sm"><b>Senha:</b> {showViewPassword ? (selectedUser.password || "Sem senha") : "••••••••"}</p>
-                  <p className="text-xs text-gray-500">O admin pode ver senhas aqui.</p>
+                  <p className="text-xs text-gray-500">Disponível apenas para perfis autorizados.</p>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -698,11 +744,11 @@ export function UserManagement() {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="financeiro">Financeiro</SelectItem>
-                  <SelectItem value="agendamento">Agendamento</SelectItem>
-                  <SelectItem value="medico">Médico</SelectItem>
-                  <SelectItem value="paciente">Paciente</SelectItem>
+                  {roleOptions.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -773,11 +819,11 @@ export function UserManagement() {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="financeiro">Financeiro</SelectItem>
-                  <SelectItem value="agendamento">Agendamento</SelectItem>
-                  <SelectItem value="medico">Médico</SelectItem>
-                  <SelectItem value="paciente">Paciente</SelectItem>
+                  {roleOptions.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

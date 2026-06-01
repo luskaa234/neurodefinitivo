@@ -167,13 +167,13 @@ export default function Home() {
       case "notificacoes":
         return <NotificationCenter />;
       case "usuarios":
-        if (user.role !== "admin") {
+        if (user.role !== "admin" && user.role !== "agendamento") {
           return (
             <div className="flex h-64 items-center justify-center">
               <div className="max-w-md rounded-lg border border-red-100 bg-white p-6 text-center shadow-sm">
                 <h2 className="mb-2 text-2xl font-bold text-gray-900">Acesso negado</h2>
                 <p className="text-gray-600">
-                  Apenas administradores podem visualizar ou alterar usuários.
+                  Apenas administradores e agendamento podem acessar usuários.
                 </p>
               </div>
             </div>

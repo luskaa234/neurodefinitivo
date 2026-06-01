@@ -77,7 +77,8 @@ type Cred = { name: string; role: string; email: string; password: string };
 
 export function UserManagement() {
   const { users, addUser, reloadAll } = useApp();
-  const { loginAsUser } = useAuth();
+  const { loginAsUser, user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
 
   // modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -401,6 +402,26 @@ export function UserManagement() {
   const totalActive = users.filter((u) => u.is_active).length;
   const totalInactive = totalUsers - totalActive;
   const totalDoctors = users.filter((u) => u.role === "medico").length;
+
+  if (!isAdmin) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center px-4">
+        <Card className="w-full max-w-md border-red-100 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-gray-900">Acesso negado</CardTitle>
+            <CardDescription>
+              Apenas administradores podem visualizar emails, senhas ou alterar usuários.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600">
+              Seu perfil atual não tem permissão para acessar esta área.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 px-2 sm:px-4">

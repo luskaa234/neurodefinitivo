@@ -37,6 +37,18 @@ const CONVENIOS = [
 
 const nowIso = () => new Date().toISOString();
 
+// Postgrest errors that make it to the server (RLS rejection, check constraint,
+// unique index, etc.) carry a `code`/`details`/`hint`. Only bare network failures
+// (no such fields) should fall back to the local cache — otherwise a rejected
+// write gets swallowed, the UI reports "saved", and the next reload silently
+// overwrites the local fallback with the untouched remote row.
+const isOfflineError = (error: any) => {
+  if (!error) return false;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (error.code || error.details || error.hint) return false;
+  return error instanceof TypeError || /failed to fetch|networkerror/i.test(String(error?.message || ""));
+};
+
 const normalizeText = (value?: string | null) =>
   String(value || "")
     .normalize("NFD")
@@ -327,6 +339,7 @@ export const tabelaValoresService = {
       safeJsonWrite(STORAGE_KEY, [saved, ...rows.filter((row) => row.id !== saved.id)]);
       return saved;
     } catch (error: any) {
+      if (!isOfflineError(error)) throw error;
       console.warn("Falha ao salvar tabela_valores no Supabase, usando fallback local:", error?.message || error);
     }
     safeJsonWrite(STORAGE_KEY, [item, ...rows]);
@@ -384,6 +397,7 @@ export const tabelaValoresService = {
       }
       return saved;
     } catch (error: any) {
+      if (!isOfflineError(error)) throw error;
       console.warn("Falha ao atualizar tabela_valores no Supabase, usando fallback local:", error?.message || error);
     }
     safeJsonWrite(STORAGE_KEY, rows.map((item) => (item.id === id ? next : item)));

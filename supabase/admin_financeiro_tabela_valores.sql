@@ -180,3 +180,19 @@ for select using (true);
 drop policy if exists "admin_write_tabela_valores" on tabela_valores;
 create policy "admin_write_tabela_valores" on tabela_valores
 for all using (true) with check (true);
+
+drop policy if exists "admin_select_historico_tabela_valores" on historico_tabela_valores;
+create policy "admin_select_historico_tabela_valores" on historico_tabela_valores
+for select using (true);
+
+drop policy if exists "admin_write_historico_tabela_valores" on historico_tabela_valores;
+create policy "admin_write_historico_tabela_valores" on historico_tabela_valores
+for all using (true) with check (true);
+
+drop policy if exists "admin_select_logs_financeiros_administrativos" on logs_financeiros_administrativos;
+create policy "admin_select_logs_financeiros_administrativos" on logs_financeiros_administrativos
+for select using (true);
+
+drop policy if exists "admin_write_logs_financeiros_administrativos" on logs_financeiros_administrativos;
+create policy "admin_write_logs_financeiros_administrativos" on logs_financeiros_administrativos
+for all using (true) with check (true);

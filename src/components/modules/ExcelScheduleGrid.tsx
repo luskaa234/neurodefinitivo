@@ -34,6 +34,8 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 
 import { useApp } from "@/contexts/AppContext";
@@ -65,6 +67,7 @@ type AptLike = {
   notes?: string;
   is_fixed?: boolean;
   is_virtual?: boolean;
+  is_professional_meeting?: boolean;
   recurrence_source_id?: string;
   created_at?: string;
 
@@ -80,6 +83,7 @@ type FormState = {
   notes: string;
   status: UIStatus;
   is_fixed: boolean;
+  is_professional_meeting: boolean;
 };
 
 const normalizeTime = (time?: string) => {
@@ -232,6 +236,7 @@ export default function ExcelScheduleGrid() {
   const [selected, setSelected] = useState<AptLike | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getWeekStart(new Date()));
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
   const [quickDoctorName, setQuickDoctorName] = useState("");
@@ -263,6 +268,7 @@ export default function ExcelScheduleGrid() {
     notes: "",
     status: "agendado",
     is_fixed: false,
+    is_professional_meeting: false,
   });
   const appointmentsList = useMemo(
     () => appointments as unknown as AptLike[],
@@ -564,6 +570,7 @@ export default function ExcelScheduleGrid() {
       notes: "",
       status: "agendado",
       is_fixed: false,
+      is_professional_meeting: false,
       ...prefill,
     });
     setPanelOpen(true);
@@ -582,6 +589,7 @@ export default function ExcelScheduleGrid() {
       notes: apt.notes || "",
       status: toUiStatus(apt.status),
       is_fixed: Boolean(apt.is_fixed),
+      is_professional_meeting: Boolean(apt.is_professional_meeting),
     });
     setPanelOpen(true);
   };
@@ -643,6 +651,7 @@ export default function ExcelScheduleGrid() {
       notes: form.notes,
       status: toDbStatus(nextStatus),
       is_fixed: form.is_fixed,
+      is_professional_meeting: form.is_professional_meeting,
     };
 
     const editTargetId = editing && selected ? selected.id : "";
@@ -1071,7 +1080,38 @@ export default function ExcelScheduleGrid() {
   return (
     <div className="flex h-auto min-h-[80vh] flex-col bg-white border rounded-xl overflow-hidden shadow-sm lg:h-[90vh] lg:flex-row">
       {/* ================== SIDEBAR FILTROS ================== */}
-      <aside className="w-full border-b bg-gray-50 p-2 lg:w-[260px] lg:border-b-0 lg:border-r">
+      <aside
+        className={cn(
+          "w-full border-b bg-gray-50 p-2 lg:border-b-0 lg:border-r lg:transition-[width] lg:duration-200",
+          sidebarCollapsed ? "lg:w-12" : "lg:w-[260px]"
+        )}
+      >
+        <div className="mb-2 hidden justify-end lg:flex">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSidebarCollapsed((s) => !s)}
+            title={sidebarCollapsed ? "Expandir filtros" : "Recolher filtros"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {sidebarCollapsed && (
+          <div className="hidden lg:flex lg:flex-col lg:items-center lg:gap-2">
+            <Button
+              size="icon"
+              className="h-8 w-8 bg-purple-600 hover:bg-purple-700"
+              onClick={() => openNew()}
+              title="Novo agendamento"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        <div className={cn(sidebarCollapsed && "lg:hidden")}>
         {schedulerNotifications.length > 0 && (
           <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900">
             <div className="font-semibold">Reagendar agora</div>
@@ -1217,6 +1257,7 @@ export default function ExcelScheduleGrid() {
             </div>
           </div>
         </div>
+        </div>
       </aside>
 
       {/* ================== AGENDA SEMANAL ================== */}
@@ -1340,6 +1381,7 @@ export default function ExcelScheduleGrid() {
                                     <div className="text-[10px] font-semibold leading-tight break-words">
                                       {meta?.patientNames || getAllPatients(apt).map(getPaciente).join(", ")}
                                       {apt.is_fixed && <span className="ml-1">📌</span>}
+                                      {apt.is_professional_meeting && <span className="ml-1">🧑‍⚕️</span>}
                                     </div>
                                     {selectedDoctorId === "all" && (
                                       <div className="text-[9px] opacity-90 break-words">
@@ -1715,6 +1757,17 @@ export default function ExcelScheduleGrid() {
                 onChange={(e) => setForm((s) => ({ ...s, is_fixed: e.target.checked }))}
               />
               Agendamento fixo (repete semanalmente)
+            </label>
+
+            <label className="flex items-center gap-2 text-[11px] text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.is_professional_meeting}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, is_professional_meeting: e.target.checked }))
+                }
+              />
+              Reunião do médico com o responsável (não é atendimento clínico)
             </label>
 
             {/* VALOR */}
@@ -2136,6 +2189,17 @@ export default function ExcelScheduleGrid() {
                   onChange={(e) => setForm((s) => ({ ...s, is_fixed: e.target.checked }))}
                 />
                 Agendamento fixo (repete semanalmente)
+              </label>
+
+              <label className="flex items-center gap-2 text-[11px] text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.is_professional_meeting}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, is_professional_meeting: e.target.checked }))
+                  }
+                />
+                Reunião do médico com o responsável (não é atendimento clínico)
               </label>
 
               <div className="space-y-1">

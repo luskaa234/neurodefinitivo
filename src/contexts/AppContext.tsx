@@ -61,6 +61,7 @@ export interface Appointment {
   created_at: string;
   is_fixed?: boolean;
   is_virtual?: boolean;
+  is_professional_meeting?: boolean;
   recurrence_source_id?: string;
 }
 
@@ -227,21 +228,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem(SERVICES_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      setServices(
-        parsed.map((s: any) => ({
-          id: String(s.id || crypto.randomUUID()),
-          name: String(s.name || "Serviço"),
-          duration: Number(s.duration) || 60,
-          price: Number(s.price) || 0,
-          description: s.description ? String(s.description) : "",
-          category: s.category ? String(s.category) : "Outros",
-          is_active: s.is_active !== false,
-          created_at: s.created_at ? String(s.created_at) : new Date().toISOString(),
-        }))
+      const parsed = raw ? JSON.parse(raw) : [];
+      const list: Service[] = (Array.isArray(parsed) ? parsed : []).map((s: any) => ({
+        id: String(s.id || crypto.randomUUID()),
+        name: String(s.name || "Serviço"),
+        duration: Number(s.duration) || 60,
+        price: Number(s.price) || 0,
+        description: s.description ? String(s.description) : "",
+        category: s.category ? String(s.category) : "Outros",
+        is_active: s.is_active !== false,
+        created_at: s.created_at ? String(s.created_at) : new Date().toISOString(),
+      }));
+
+      // Serviço padrão para agendamento com médicos: avaliação em reunião com os pais.
+      const hasReuniaoPais = list.some(
+        (s) => s.name.trim().toLowerCase() === "avaliação (reunião com os pais)"
       );
+      const withDefaults = hasReuniaoPais
+        ? list
+        : [
+            {
+              id: crypto.randomUUID(),
+              name: "Avaliação (Reunião com os pais)",
+              duration: 60,
+              price: 0,
+              description: "Avaliação em reunião com os pais/responsáveis do paciente.",
+              category: "Avaliação",
+              is_active: true,
+              created_at: new Date().toISOString(),
+            },
+            ...list,
+          ];
+
+      setServices(withDefaults);
+      if (!hasReuniaoPais) {
+        localStorage.setItem(SERVICES_KEY, JSON.stringify(withDefaults));
+      }
     } catch {
       // non-fatal
     }
@@ -964,6 +986,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           "notes",
           "price",
           "is_fixed",
+          "is_professional_meeting",
         ].forEach((key) => {
           if ((patch as any)[key] !== undefined) {
             allowedPatch[key] = (patch as any)[key];
@@ -1421,6 +1444,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notes: data.notes ?? null,
         price: Number(data.price) || 0,
         is_fixed: data.is_fixed === true,
+        is_professional_meeting: data.is_professional_meeting === true,
       };
 
       if (!base.patient_id) throw new Error("patient_id obrigatório");
@@ -1497,40 +1521,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      // Atualização otimista local para evitar "salvou, mas não aparece"
-      // quando houver atraso/erro temporário no reload.
-      const optimistic = normalizeAppointment({
-        ...apt,
-        appointment_patients: patientIds.map((patient_id) => ({ patient_id })),
-        appointment_doctors: doctorIds.map((doctor_id) => ({ doctor_id })),
-      });
-      optimisticPendingRef.current.set(optimistic.id, Date.now());
-      setAppointments((prev) => {
-        const base = prev.filter(
-          (item) => !item.is_virtual && !String(item.id || "").includes("::")
-        );
-        const nextBase = [...base.filter((item) => item.id !== optimistic.id), optimistic];
-        return expandWeeklyAppointments(nextBase);
-      });
+      // O agendamento já está salvo no banco a partir daqui. As etapas abaixo
+      // (cache otimista, WhatsApp, push, log) são best-effort: uma falha nelas
+      // não pode fazer o save parecer que deu erro (e travar o painel aberto).
+      try {
+        // Atualização otimista local para evitar "salvou, mas não aparece"
+        // quando houver atraso/erro temporário no reload.
+        const optimistic = normalizeAppointment({
+          ...apt,
+          appointment_patients: patientIds.map((patient_id) => ({ patient_id })),
+          appointment_doctors: doctorIds.map((doctor_id) => ({ doctor_id })),
+        });
+        optimisticPendingRef.current.set(optimistic.id, Date.now());
+        setAppointments((prev) => {
+          const base = prev.filter(
+            (item) => !item.is_virtual && !String(item.id || "").includes("::")
+          );
+          const nextBase = [...base.filter((item) => item.id !== optimistic.id), optimistic];
+          return expandWeeklyAppointments(nextBase);
+        });
 
-      refreshAppointmentsInBackground();
-      if (!isRecurrenceOverride) {
-        const { doctorsList, doctorMessage } = buildAppointmentMessages({
-          type: "create",
-          appointment: apt as Appointment,
-          patientIds,
-          doctorIds,
-        });
-        doctorsList.forEach((d) => {
-          logDoctorNotification(d.id, "create", doctorMessage, apt.id);
-        });
-        notifyAppointmentWhatsApp({
-          type: "create",
-          appointment: apt as Appointment,
-          patientIds,
-          doctorIds,
-        });
-        sendPushNotification({ type: "create", appointment: apt as Appointment });
+        refreshAppointmentsInBackground();
+        if (!isRecurrenceOverride) {
+          const { doctorsList, doctorMessage } = buildAppointmentMessages({
+            type: "create",
+            appointment: apt as Appointment,
+            patientIds,
+            doctorIds,
+          });
+          doctorsList.forEach((d) => {
+            logDoctorNotification(d.id, "create", doctorMessage, apt.id);
+          });
+          notifyAppointmentWhatsApp({
+            type: "create",
+            appointment: apt as Appointment,
+            patientIds,
+            doctorIds,
+          });
+          sendPushNotification({ type: "create", appointment: apt as Appointment });
+        }
+      } catch (sideEffectErr: any) {
+        console.warn("addAppointment side-effects non-fatal:", sideEffectErr?.message || sideEffectErr);
       }
       return true;
     } catch (err: any) {
@@ -1706,76 +1737,83 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (patientIds) await trySyncAppointmentPatients(id, patientIds);
       if (doctorIds) await trySyncAppointmentDoctors(id, doctorIds);
 
-      // Atualização otimista local: garante que a agenda reflita o novo status
-      // imediatamente, mesmo se houver atraso/falha em recarga posterior.
-      setAppointments((prev) =>
-        prev.map((apt) => {
-          if (apt.id !== id) return apt;
-          return {
-            ...apt,
-            ...(patch as Partial<Appointment>),
-            patient_ids: patientIds ?? apt.patient_ids,
-            doctor_ids: doctorIds ?? apt.doctor_ids,
-            status:
-              (patch.status as AppointmentStatus | undefined) ?? apt.status,
-            time:
-              typeof patch.time === "string" && patch.time
-                ? patch.time
-                : apt.time,
-          };
-        })
-      );
-      patchAppointmentInCache(id, patch as Partial<Appointment>);
+      // O agendamento já está salvo no banco a partir daqui. As etapas abaixo
+      // (cache otimista, WhatsApp, push, log) são best-effort: uma falha nelas
+      // não pode fazer o save parecer que deu erro (e travar o painel aberto).
+      try {
+        // Atualização otimista local: garante que a agenda reflita o novo status
+        // imediatamente, mesmo se houver atraso/falha em recarga posterior.
+        setAppointments((prev) =>
+          prev.map((apt) => {
+            if (apt.id !== id) return apt;
+            return {
+              ...apt,
+              ...(patch as Partial<Appointment>),
+              patient_ids: patientIds ?? apt.patient_ids,
+              doctor_ids: doctorIds ?? apt.doctor_ids,
+              status:
+                (patch.status as AppointmentStatus | undefined) ?? apt.status,
+              time:
+                typeof patch.time === "string" && patch.time
+                  ? patch.time
+                  : apt.time,
+            };
+          })
+        );
+        patchAppointmentInCache(id, patch as Partial<Appointment>);
 
-      refreshAppointmentsInBackground();
-      const effectivePatientIds =
-        patientIds ?? previous?.patient_ids ?? [previous?.patient_id || ""];
-      const effectiveDoctorIds =
-        doctorIds ?? previous?.doctor_ids ?? [previous?.doctor_id || ""];
-      const nextStatus =
-        (patch.status as AppointmentStatus) || previous?.status || "agendado";
-      const nextDate = patch.date || previous?.date || "";
-      const nextTime = patch.time || previous?.time || "";
+        refreshAppointmentsInBackground();
+        const effectivePatientIds =
+          patientIds ?? previous?.patient_ids ?? [previous?.patient_id || ""];
+        const effectiveDoctorIds =
+          doctorIds ?? previous?.doctor_ids ?? [previous?.doctor_id || ""];
+        const nextStatus =
+          (patch.status as AppointmentStatus) || previous?.status || "agendado";
+        const nextDate = patch.date || previous?.date || "";
+        const nextTime = patch.time || previous?.time || "";
 
-      const nextAppointment: Appointment = {
-        ...(previous || ({} as Appointment)),
-        ...(patch as Appointment),
-        status: nextStatus,
-        date: nextDate,
-        time: nextTime,
-      };
+        const nextAppointment: Appointment = {
+          ...(previous || ({} as Appointment)),
+          ...(patch as Appointment),
+          status: nextStatus,
+          date: nextDate,
+          time: nextTime,
+        };
 
-      let type: "update" | "cancel" | "reschedule" = "update";
-      if (nextStatus === "cancelado") {
-        type = "cancel";
-      } else if (
-        previous &&
-        (previous.date !== nextDate ||
-          normalizeTimeToHHMM(previous.time) !==
-            normalizeTimeToHHMM(nextTime))
-      ) {
-        type = "reschedule";
+        let type: "update" | "cancel" | "reschedule" = "update";
+        if (nextStatus === "cancelado") {
+          type = "cancel";
+        } else if (
+          previous &&
+          (previous.date !== nextDate ||
+            normalizeTimeToHHMM(previous.time) !==
+              normalizeTimeToHHMM(nextTime))
+        ) {
+          type = "reschedule";
+        }
+
+        notifyAppointmentWhatsApp({
+          type,
+          appointment: nextAppointment,
+          previous,
+          patientIds: effectivePatientIds.filter(Boolean),
+          doctorIds: effectiveDoctorIds.filter(Boolean),
+        });
+        sendPushNotification({ type, appointment: nextAppointment });
+
+        const { doctorsList, doctorMessage } = buildAppointmentMessages({
+          type,
+          appointment: nextAppointment,
+          previous,
+          patientIds: effectivePatientIds.filter(Boolean),
+          doctorIds: effectiveDoctorIds.filter(Boolean),
+        });
+        doctorsList.forEach((d) => {
+          logDoctorNotification(d.id, type, doctorMessage, nextAppointment.id);
+        });
+      } catch (sideEffectErr: any) {
+        console.warn("updateAppointment side-effects non-fatal:", sideEffectErr?.message || sideEffectErr);
       }
-
-      notifyAppointmentWhatsApp({
-        type,
-        appointment: nextAppointment,
-        previous,
-        patientIds: effectivePatientIds.filter(Boolean),
-        doctorIds: effectiveDoctorIds.filter(Boolean),
-      });
-      sendPushNotification({ type, appointment: nextAppointment });
-
-      const { doctorsList, doctorMessage } = buildAppointmentMessages({
-        type,
-        appointment: nextAppointment,
-        previous,
-        patientIds: effectivePatientIds.filter(Boolean),
-        doctorIds: effectiveDoctorIds.filter(Boolean),
-      });
-      doctorsList.forEach((d) => {
-        logDoctorNotification(d.id, type, doctorMessage, nextAppointment.id);
-      });
       return true;
     } catch (err: any) {
       console.error("updateAppointment:", err?.message || err);

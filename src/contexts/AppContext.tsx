@@ -587,7 +587,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       message,
       messageType: toWhatsappEventType(type),
       status: "sent",
-      user: user ? { id: user.id, name: user.name } : null,
+      user: null,
       appointmentId,
     });
   };
@@ -631,7 +631,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         message: summary.message,
         messageType: toWhatsappEventType(type),
         status: "sent",
-        user: user ? { id: user.id, name: user.name } : null,
+        user: null,
         appointmentId: appointment.id,
       });
       createInternalNotification({

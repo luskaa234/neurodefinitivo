@@ -35,6 +35,20 @@ function Parse-Money([string]$Value) {
   return 0
 }
 
+function Parse-ExpressionAmount([string]$Value) {
+  $raw = $Value.Trim()
+  if (-not $raw) { return 0 }
+  $expression = if ($raw.Contains("=")) { ($raw -split "=")[-1] } else { $raw }
+  if ($expression.Contains("+")) {
+    $sum = 0.0
+    foreach ($part in ($expression -split "\+")) {
+      $sum += Parse-Money $part
+    }
+    return $sum
+  }
+  return Parse-Money $expression
+}
+
 function Extract-DocxText([string]$Path) {
   if (-not (Test-Path $Path)) { throw "Arquivo nao encontrado: $Path" }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -81,6 +95,8 @@ function Convert-ToTabelaValores([string[]]$Lines) {
   $pacienteAtual = ""
   $convenioAtual = ""
   $especialidadeAtual = ""
+  $totalPendente = $null
+  $profissionalPendente = $null
 
   foreach ($line in $Lines) {
     $linha = $line.Trim()
@@ -109,6 +125,49 @@ function Convert-ToTabelaValores([string[]]$Lines) {
       continue
     }
 
+    if ($normal.Contains("TOTAL") -and $moneyMatches.Count -gt 0) {
+      $totalPendente = Parse-Money $linha
+      continue
+    }
+
+    if ($normal.Contains("70%")) {
+      $afterColon = if ($linha.Contains(":")) { ($linha -split ":", 2)[1] } else { $linha }
+      $profissionalPendente = Parse-ExpressionAmount $afterColon
+      continue
+    }
+
+    if ($normal.Contains("30%")) {
+      $afterColon = if ($linha.Contains(":")) { ($linha -split ":", 2)[1] } else { $linha }
+      $valorClinica = Parse-ExpressionAmount $afterColon
+      if ($null -ne $profissionalPendente -and $pacienteAtual -and $especialidadeAtual) {
+        $total = if ($null -ne $totalPendente) { $totalPendente } else { [math]::Round($profissionalPendente + $valorClinica, 2) }
+        $key = "$(Normalize-Text $pacienteAtual)|$(Normalize-Text $convenioAtual)|$(Normalize-Text $especialidadeAtual)"
+        if ($seen.Add($key)) {
+          $records.Add([pscustomobject][ordered]@{
+            paciente_id = $null
+            paciente_nome = $pacienteAtual
+            convenio_id = $null
+            convenio_nome = $convenioAtual
+            especialidade_id = $null
+            especialidade_nome = $especialidadeAtual
+            valor_plano = $total
+            valor_profissional = $profissionalPendente
+            percentual_clinica = if ($total -gt 0) { [math]::Round(($valorClinica / $total) * 100, 2) } else { 0 }
+            percentual_profissional = if ($total -gt 0) { [math]::Round(($profissionalPendente / $total) * 100, 2) } else { 0 }
+            tipo_calculo = "fixo"
+            valor_fixo = $true
+            status = "ativo"
+            observacoes = "Importado do arquivo LISTA DE PACIENTES E VALORES.docx. Valores conforme documento original (plano/profissional/clinica)."
+            inconsistencias = @()
+            origem_importacao = "docx_lista_pacientes_valores"
+          })
+        }
+      }
+      $totalPendente = $null
+      $profissionalPendente = $null
+      continue
+    }
+
     if ($moneyMatches.Count -gt 0) {
       $parts = $linha -split "\|"
       $possiblePatient = ($parts | Where-Object { (Normalize-Text $_) -notmatch "VALOR|PLANO|CONVENIO|ESPECIALIDADE|70%|30%" -and $_ -notmatch "\d{2,3}(?:[,.]\d{1,3})?" } | Select-Object -First 1)
@@ -121,7 +180,6 @@ function Convert-ToTabelaValores([string[]]$Lines) {
       foreach ($match in $moneyMatches) {
         $valor = Parse-Money $match.Value
         if ($valor -le 0 -or -not $pacienteAtual -or -not $especialidadeAtual) { continue }
-        $valorProfissional = if ($valor -eq 160 -or $valor -eq 185) { 150 } else { $valor }
         $key = "$(Normalize-Text $pacienteAtual)|$(Normalize-Text $convenioAtual)|$(Normalize-Text $especialidadeAtual)"
         if (-not $seen.Add($key)) { continue }
         $records.Add([pscustomobject][ordered]@{
@@ -132,13 +190,13 @@ function Convert-ToTabelaValores([string[]]$Lines) {
           especialidade_id = $null
           especialidade_nome = $especialidadeAtual
           valor_plano = $valor
-          valor_profissional = $valorProfissional
-          percentual_clinica = if ($valor -gt 0) { [math]::Round((($valor - $valorProfissional) / $valor) * 100, 2) } else { 0 }
-          percentual_profissional = if ($valor -gt 0) { [math]::Round(($valorProfissional / $valor) * 100, 2) } else { 0 }
+          valor_profissional = $valor
+          percentual_clinica = 0
+          percentual_profissional = 100
           tipo_calculo = "fixo"
           valor_fixo = $true
           status = "ativo"
-          observacoes = "Importado do arquivo LISTA DE PACIENTES E VALORES.docx."
+          observacoes = "Importado do arquivo LISTA DE PACIENTES E VALORES.docx. Defina o valor da clinica manualmente."
           inconsistencias = @()
           origem_importacao = "docx_lista_pacientes_valores"
         })

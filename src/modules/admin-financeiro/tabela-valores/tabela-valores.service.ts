@@ -83,6 +83,35 @@ const parseMoney = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const parseExpressionAmount = (value: string) => {
+  const raw = String(value || "").trim();
+  const expression = raw.includes("=") ? raw.split("=").pop() || "" : raw;
+  if (expression.includes("+")) {
+    return expression
+      .split("+")
+      .map((part) => parseMoney(part))
+      .reduce((sum, item) => sum + item, 0);
+  }
+  return parseMoney(expression);
+};
+
+const calcularPercentuaisPorValores = (valorPlano: number, valorProfissional: number) => {
+  const valorClinica = Number(Math.max(0, valorPlano - valorProfissional).toFixed(2));
+  return {
+    percentual_clinica: valorPlano > 0 ? Number(((valorClinica / valorPlano) * 100).toFixed(2)) : 0,
+    percentual_profissional: valorPlano > 0 ? Number(((valorProfissional / valorPlano) * 100).toFixed(2)) : 0,
+  };
+};
+
+const normalizarPercentuais = <T extends Partial<TabelaValor | CriarTabelaValorDTO>>(item: T): T => {
+  const valorPlano = Number(item.valor_plano) || 0;
+  const valorProfissional = Number(item.valor_profissional) || 0;
+  return {
+    ...item,
+    ...calcularPercentuaisPorValores(valorPlano, valorProfissional),
+  };
+};
+
 const safeJsonRead = <T>(key: string, fallback: T): T => {
   if (typeof window === "undefined") return fallback;
   try {
@@ -190,12 +219,15 @@ export function analisarTextoTabelaValores(texto: string): ResultadoImportacaoTa
   let convenioAtual = "";
   let especialidadeAtual = "";
   let ultimoValorPlano = 0;
+  let totalPendente: number | null = null;
+  let profissionalPendente: number | null = null;
 
   for (const linha of linhas) {
     const normal = normalizeText(linha);
     const isConvenio = CONVENIOS.some((item) => normal.includes(item));
     const isEspecialidade = ESPECIALIDADES.includes(normal) || normal.includes("PSICOPEGAGOGIA");
     const moneyMatches = linha.match(/\d{2,3}(?:[,.]\d{1,3})?/g) || [];
+    const afterColon = linha.includes(":") ? linha.split(":").slice(1).join(":") : linha;
 
     if (isConvenio) {
       convenioAtual = linha.replace(/\(.*?\)/g, "").replace(/-+/g, " ").trim();
@@ -207,16 +239,50 @@ export function analisarTextoTabelaValores(texto: string): ResultadoImportacaoTa
       continue;
     }
 
+    if (normal.includes("TOTAL") && moneyMatches.length) {
+      totalPendente = parseMoney(linha);
+      continue;
+    }
+
     if (normal.includes("70%")) {
-      const valor = parseMoney(linha);
-      if (valor && ultimoValorPlano) {
-        inconsistencias.push(`Divisão 70% encontrada para ${pacienteAtual || "registro sem paciente"}: ${linha}`);
-      }
+      profissionalPendente = parseExpressionAmount(afterColon);
       continue;
     }
 
     if (normal.includes("30%")) {
-      inconsistencias.push(`Divisão 30% encontrada para ${pacienteAtual || "registro sem paciente"}: ${linha}`);
+      const valorClinica = parseExpressionAmount(afterColon);
+      if (profissionalPendente != null && pacienteAtual && especialidadeAtual) {
+        const total = totalPendente ?? Number((profissionalPendente + valorClinica).toFixed(2));
+        if (totalPendente != null && Math.abs(totalPendente - (profissionalPendente + valorClinica)) > 0.01) {
+          inconsistencias.push(
+            `Divisão não fecha com o total para ${pacienteAtual}: total ${totalPendente}, profissional ${profissionalPendente}, clínica ${valorClinica}.`
+          );
+        }
+        const key = `${normalizeText(pacienteAtual)}|${normalizeText(convenioAtual)}|${especialidadeAtual}|${total}`;
+        if (vistos.has(key)) {
+          repetidos.push(`${pacienteAtual} - ${especialidadeAtual} - ${total}`);
+        } else {
+          vistos.add(key);
+          ultimoValorPlano = total;
+          registros.push({
+            paciente_nome: pacienteAtual,
+            convenio_nome: convenioAtual || "Particular/Plano não informado",
+            especialidade_nome: especialidadeAtual,
+            valor_plano: total,
+            valor_profissional: profissionalPendente,
+            ...calcularPercentuaisPorValores(total, profissionalPendente),
+            tipo_calculo: "fixo",
+            valor_fixo: true,
+            status: "ativo",
+            observacoes: "Importado do arquivo LISTA DE PACIENTES E VALORES.docx. Valores conforme documento original (plano/profissional/clínica).",
+            origem_importacao: "docx_lista_pacientes_valores",
+          });
+        }
+      } else {
+        inconsistencias.push(`Divisão 30% encontrada sem paciente/especialidade ou valor profissional correspondente: ${linha}`);
+      }
+      totalPendente = null;
+      profissionalPendente = null;
       continue;
     }
 
@@ -227,7 +293,6 @@ export function analisarTextoTabelaValores(texto: string): ResultadoImportacaoTa
           incompletos.push(`${linha} sem paciente ou especialidade vinculada.`);
           return;
         }
-        const valorProfissional = valor === 160 ? 150 : valor === 185 ? 150 : valor;
         const key = `${normalizeText(pacienteAtual)}|${normalizeText(convenioAtual)}|${especialidadeAtual}|${valor}|${index}`;
         if (vistos.has(key)) {
           repetidos.push(`${pacienteAtual} - ${especialidadeAtual} - ${valor}`);
@@ -240,13 +305,13 @@ export function analisarTextoTabelaValores(texto: string): ResultadoImportacaoTa
           convenio_nome: convenioAtual || "Particular/Plano não informado",
           especialidade_nome: especialidadeAtual,
           valor_plano: valor,
-          valor_profissional: valorProfissional,
-          percentual_clinica: valor > 0 ? Number((((valor - valorProfissional) / valor) * 100).toFixed(2)) : 0,
-          percentual_profissional: valor > 0 ? Number(((valorProfissional / valor) * 100).toFixed(2)) : 0,
+          valor_profissional: valor,
+          percentual_clinica: 0,
+          percentual_profissional: 100,
           tipo_calculo: "fixo",
           valor_fixo: true,
           status: "ativo",
-          observacoes: "Importado do arquivo LISTA DE PACIENTES E VALORES.docx. Conferir registros com valores repetidos ou sem convênio.",
+          observacoes: "Importado do arquivo LISTA DE PACIENTES E VALORES.docx. Defina o valor da clínica manualmente. Conferir registros com valores repetidos ou sem convênio.",
           origem_importacao: "docx_lista_pacientes_valores",
         });
       });
@@ -303,26 +368,27 @@ export const tabelaValoresService = {
   async criarValor(user: User, dto: CriarTabelaValorDTO): Promise<TabelaValor> {
     requireAdmin(user);
     const rows = await this.listarValores(user);
-    const errors = validarTabelaValor(dto, rows);
+    const normalizedDto = normalizarPercentuais(dto);
+    const errors = validarTabelaValor(normalizedDto, rows);
     if (errors.length) throw new Error(errors.join(" "));
     const item: TabelaValor = {
       id: crypto.randomUUID(),
-      paciente_id: dto.paciente_id ?? null,
-      paciente_nome: dto.paciente_nome ?? null,
-      convenio_id: dto.convenio_id ?? null,
-      convenio_nome: dto.convenio_nome ?? null,
-      especialidade_id: dto.especialidade_id ?? null,
-      especialidade_nome: dto.especialidade_nome,
-      valor_plano: Number(dto.valor_plano) || 0,
-      valor_profissional: Number(dto.valor_profissional) || 0,
-      percentual_clinica: Number(dto.percentual_clinica) || 0,
-      percentual_profissional: Number(dto.percentual_profissional) || 0,
-      tipo_calculo: dto.tipo_calculo || "fixo",
-      valor_fixo: dto.valor_fixo !== false,
-      status: dto.status || "ativo",
-      observacoes: dto.observacoes ?? null,
+      paciente_id: normalizedDto.paciente_id ?? null,
+      paciente_nome: normalizedDto.paciente_nome ?? null,
+      convenio_id: normalizedDto.convenio_id ?? null,
+      convenio_nome: normalizedDto.convenio_nome ?? null,
+      especialidade_id: normalizedDto.especialidade_id ?? null,
+      especialidade_nome: normalizedDto.especialidade_nome,
+      valor_plano: Number(normalizedDto.valor_plano) || 0,
+      valor_profissional: Number(normalizedDto.valor_profissional) || 0,
+      percentual_clinica: Number(normalizedDto.percentual_clinica) || 0,
+      percentual_profissional: Number(normalizedDto.percentual_profissional) || 0,
+      tipo_calculo: normalizedDto.tipo_calculo || "fixo",
+      valor_fixo: normalizedDto.valor_fixo !== false,
+      status: normalizedDto.status || "ativo",
+      observacoes: normalizedDto.observacoes ?? null,
       inconsistencias: [],
-      origem_importacao: dto.origem_importacao ?? null,
+      origem_importacao: normalizedDto.origem_importacao ?? null,
       created_at: nowIso(),
       updated_at: nowIso(),
       created_by: user.id,
@@ -352,7 +418,8 @@ export const tabelaValoresService = {
     const current = rows.find((item) => item.id === id);
     if (!current) throw new Error("Valor não encontrado.");
     const { motivo_alteracao: _motivo, ...patch } = dto;
-    const next = { ...current, ...patch, updated_at: nowIso(), updated_by: user.id } as TabelaValor;
+    const normalizedPatch = normalizarPercentuais({ ...current, ...patch });
+    const next = { ...current, ...normalizedPatch, updated_at: nowIso(), updated_by: user.id } as TabelaValor;
     const errors = validarTabelaValor(next, rows, id);
     if (errors.length) throw new Error(errors.join(" "));
     const history = safeJsonRead<HistoricoTabelaValor[]>(HISTORY_KEY, []);
@@ -383,17 +450,21 @@ export const tabelaValoresService = {
       const saved = data as TabelaValor;
       safeJsonWrite(STORAGE_KEY, rows.map((item) => (item.id === id ? saved : item)));
       if (changes.length) {
-        await supabase.from("historico_tabela_valores").insert(
-          changes.map((change) => ({
-            tabela_valor_id: id,
-            campo_alterado: change.campo_alterado,
-            valor_anterior: change.valor_anterior ? JSON.parse(change.valor_anterior) : null,
-            valor_novo: change.valor_novo ? JSON.parse(change.valor_novo) : null,
-            motivo: change.motivo,
-            usuario_id: user.id,
-            usuario_nome: user.name,
-          }))
-        ).catch(() => undefined);
+        try {
+          await supabase.from("historico_tabela_valores").insert(
+            changes.map((change) => ({
+              tabela_valor_id: id,
+              campo_alterado: change.campo_alterado,
+              valor_anterior: change.valor_anterior ? JSON.parse(change.valor_anterior) : null,
+              valor_novo: change.valor_novo ? JSON.parse(change.valor_novo) : null,
+              motivo: change.motivo,
+              usuario_id: user.id,
+              usuario_nome: user.name,
+            }))
+          );
+        } catch {
+          // O histórico local já foi gravado; falha remota não deve impedir o salvamento principal.
+        }
       }
       return saved;
     } catch (error: any) {
@@ -437,19 +508,22 @@ export const tabelaValoresService = {
     requireAdmin(user);
     const resultado = analisarTextoTabelaValores(conteudo);
     const rows = await this.listarValores(user);
-    const created = resultado.registros_criados.map((dto) => ({
-      id: crypto.randomUUID(),
-      ...dto,
-      paciente_id: dto.paciente_id ?? null,
-      convenio_id: dto.convenio_id ?? null,
-      especialidade_id: dto.especialidade_id ?? null,
-      status: dto.status || "ativo",
-      inconsistencias: [],
-      created_at: nowIso(),
-      updated_at: nowIso(),
-      created_by: user.id,
-      updated_by: user.id,
-    })) as TabelaValor[];
+    const created = resultado.registros_criados.map((dto) => {
+      const normalizedDto = normalizarPercentuais(dto);
+      return {
+        id: crypto.randomUUID(),
+        ...normalizedDto,
+        paciente_id: normalizedDto.paciente_id ?? null,
+        convenio_id: normalizedDto.convenio_id ?? null,
+        especialidade_id: normalizedDto.especialidade_id ?? null,
+        status: normalizedDto.status || "ativo",
+        inconsistencias: [],
+        created_at: nowIso(),
+        updated_at: nowIso(),
+        created_by: user.id,
+        updated_by: user.id,
+      };
+    }) as TabelaValor[];
     if (created.length) {
       try {
         const { data, error } = await supabase

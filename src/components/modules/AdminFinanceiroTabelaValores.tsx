@@ -36,6 +36,9 @@ const emptyForm: CriarTabelaValorDTO = {
 const moeda = (value: number) =>
   Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const valorClinica = (item: Pick<TabelaValor, "valor_plano" | "valor_profissional">) =>
+  Number(Math.max(0, Number(item.valor_plano || 0) - Number(item.valor_profissional || 0)).toFixed(2));
+
 const normalizeText = (value?: string | null) =>
   String(value || "")
     .normalize("NFD")
@@ -116,38 +119,6 @@ function parseFlexibleNumber(value: string) {
   }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parsePercentualSplit(value: string) {
-  const lines = String(value || "")
-    .split(/\r?\n|;/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const parsed = lines
-    .map((line) => {
-      const percentMatch = line.match(/(\d+(?:[,.]\d+)?)\s*%/);
-      const afterColon = line.includes(":") ? line.split(":").slice(1).join(":") : line;
-      return {
-        percent: percentMatch ? Number(percentMatch[1].replace(",", ".")) : 0,
-        amount: parseFlexibleNumber(afterColon),
-      };
-    })
-    .filter((item) => item.amount > 0);
-
-  if (!parsed.length) return null;
-
-  const professional = parsed[0]?.amount || 0;
-  const clinic = parsed[1]?.amount || 0;
-  const total = professional + clinic;
-  if (!total) return null;
-
-  return {
-    valor_plano: total,
-    valor_profissional: professional,
-    percentual_profissional: Number(((professional / total) * 100).toFixed(2)),
-    percentual_clinica: Number(((clinic / total) * 100).toFixed(2)),
-  };
 }
 
 function buildTabelaValoresPdf(params: {
@@ -257,7 +228,7 @@ function buildTabelaValoresPdf(params: {
 
     text(cardX + 12, cardTop - 25, `${item.convenio_nome || "Sem convenio"} | ${item.especialidade_nome || ""}`, 7, "0.18 0.14 0.19");
     text(cardX + 12, cardTop - 38, `Plano ${moeda(item.valor_plano)}  Prof. ${moeda(item.valor_profissional)}`, 7, "0.08 0.06 0.09", true);
-    text(cardX + 220, cardTop - 38, `Clinica ${item.percentual_clinica}% | Prof. ${item.percentual_profissional}%`, 7, "0.36 0.28 0.38");
+    text(cardX + 220, cardTop - 38, `Clinica ${moeda(valorClinica(item))} (${item.percentual_clinica}%)`, 7, "0.36 0.28 0.38");
     if (item.observacoes) text(cardX + 12, cardTop - 49, wrapPdfText(item.observacoes, 62)[0], 6, "0.45 0.35 0.47");
 
     if (column === 1 || rowIndex === params.rows.length - 1) y -= cardHeight + cardGap;
@@ -701,7 +672,10 @@ function TabelaValores({
                   <TableCell>{item.especialidade_nome}</TableCell>
                   <TableCell>{moeda(item.valor_plano)}</TableCell>
                   <TableCell>{moeda(item.valor_profissional)}</TableCell>
-                  <TableCell>{item.percentual_clinica}%</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{moeda(valorClinica(item))}</div>
+                    <div className="text-xs text-slate-500">{item.percentual_clinica}%</div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={item.status === "ativo" ? "default" : "secondary"}>{item.status}</Badge>
                   </TableCell>
@@ -743,7 +717,6 @@ function ModalCriarValor(props: {
 }) {
   const [patientSearch, setPatientSearch] = useState(props.form.paciente_nome || "");
   const [isPatientListOpen, setIsPatientListOpen] = useState(false);
-  const [percentualSplit, setPercentualSplit] = useState("");
 
   useEffect(() => {
     setPatientSearch(props.form.paciente_nome || "");
@@ -771,20 +744,12 @@ function ModalCriarValor(props: {
     });
   };
 
-  const applyPercentualSplit = () => {
-    const parsed = parsePercentualSplit(percentualSplit);
-    if (!parsed) {
-      toast.error("Informe a divisão no formato 70%: 105 e 30%: 45+10=55.");
-      return;
-    }
-    props.onChange({
-      ...parsed,
-      tipo_calculo: "percentual",
-      observacoes: [props.form.observacoes, `Divisão percentual: ${percentualSplit.replace(/\r?\n/g, " | ")}`]
-        .filter(Boolean)
-        .join("\n"),
-    });
-    toast.success("Percentual calculado e aplicado.");
+  const valorClinicaAtual = Math.max(0, Number(props.form.valor_plano || 0) - Number(props.form.valor_profissional || 0));
+
+  const handleValorClinicaChange = (value: string) => {
+    const novoValorClinica = parseFlexibleNumber(value);
+    const valorPlano = Number(props.form.valor_plano) || 0;
+    props.onChange({ valor_profissional: Math.max(0, valorPlano - novoValorClinica) });
   };
 
   return (
@@ -848,25 +813,14 @@ function ModalCriarValor(props: {
               </SelectContent>
             </Select>
           </div>
-          {props.form.tipo_calculo === "percentual" && (
-            <div className="space-y-2 md:col-span-2">
-              <Label>Divisão percentual</Label>
-              <Textarea
-                value={percentualSplit}
-                onChange={(event) => setPercentualSplit(event.target.value)}
-                placeholder={"70%: 105\n30%: 45+10=55"}
-                className="min-h-[88px]"
-              />
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-500">O sistema soma os valores, calcula o total e atualiza os percentuais reais.</p>
-                <Button type="button" variant="outline" size="sm" onClick={applyPercentualSplit}>Aplicar divisão</Button>
-              </div>
-            </div>
-          )}
           <Field label="Valor do plano" value={String(props.form.valor_plano)} onChange={(v) => props.onChange({ valor_plano: parseFlexibleNumber(v) })} />
-          <Field label="Valor do profissional" value={String(props.form.valor_profissional)} onChange={(v) => props.onChange({ valor_profissional: parseFlexibleNumber(v) })} />
-          <Field label="% Clínica" value={String(props.form.percentual_clinica)} onChange={(v) => props.onChange({ percentual_clinica: parseFlexibleNumber(v) })} />
-          <Field label="% Profissional" value={String(props.form.percentual_profissional)} onChange={(v) => props.onChange({ percentual_profissional: parseFlexibleNumber(v) })} />
+          <Field label="Valor do médico" value={String(props.form.valor_profissional)} onChange={(v) => props.onChange({ valor_profissional: parseFlexibleNumber(v) })} />
+          <Field
+            label="Valor da clínica"
+            value={String(valorClinicaAtual)}
+            onChange={handleValorClinicaChange}
+            hint={`${props.form.percentual_clinica || 0}% do valor do plano.`}
+          />
           <div className="space-y-2">
             <Label>Status</Label>
             <Select value={props.form.status || "ativo"} onValueChange={(v) => props.onChange({ status: v as any })}>
@@ -892,11 +846,32 @@ function ModalCriarValor(props: {
   );
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  disabled?: boolean;
+  hint?: string;
+}) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Input type={type} step={type === "number" ? "0.01" : undefined} value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input
+        type={type}
+        step={type === "number" ? "0.01" : undefined}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint && <p className="text-xs text-slate-500">{hint}</p>}
     </div>
   );
 }

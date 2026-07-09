@@ -25,6 +25,7 @@ import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from '@/utils/date';
+import { getAppointmentPersonLabel } from '@/utils/appointments';
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -51,6 +52,11 @@ export function Dashboard() {
   const getPatientName = (patientId: string) => {
     const patient = patients.find(p => p.id === patientId);
     return patient ? patient.name : 'Paciente não encontrado';
+  };
+
+  const getPatientAppointmentLabel = (appointment: any) => {
+    const patient = patients.find(p => p.id === appointment.patient_id);
+    return getAppointmentPersonLabel(appointment, patient);
   };
 
   const getDoctorName = (doctorId: string) => {
@@ -129,7 +135,7 @@ export function Dashboard() {
 
           const dateLabel = apt.date ? formatDateBR(apt.date) : "data";
           const timeLabel = apt.time ? ` às ${apt.time}` : "";
-          const patientName = apt.patient_id ? getPatientName(apt.patient_id) : "Paciente";
+          const patientName = apt.patient_id ? getPatientAppointmentLabel(apt) : "Paciente";
           const doctorName = apt.doctor_id ? getDoctorName(apt.doctor_id) : "Médico";
 
           let message = "";
@@ -271,7 +277,7 @@ export function Dashboard() {
   };
 
   const filteredPendingAppointments = pendingAppointments.filter((appointment) => {
-    const patientName = getPatientName(appointment.patient_id).toLowerCase();
+    const patientName = getPatientAppointmentLabel(appointment).toLowerCase();
     const doctorName = getDoctorName(appointment.doctor_id).toLowerCase();
     const query = pendingSearch.trim().toLowerCase();
     const matchesQuery = query.length === 0 || patientName.includes(query) || doctorName.includes(query);
@@ -569,7 +575,7 @@ export function Dashboard() {
               <div className="absolute left-0 top-4 h-10 w-1.5 rounded-full bg-purple-500/70" />
               <div className="pl-3">
                 <p className="text-sm font-semibold text-slate-900">
-                  {getPatientName(appointment.patient_id)}
+                  {getPatientAppointmentLabel(appointment)}
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span className="rounded-full bg-slate-100 px-2 py-0.5">
@@ -857,7 +863,7 @@ export function Dashboard() {
                                     </div>
                                   </TableCell>
                                   <TableCell className="font-medium">
-                                    {getPatientName(appointment.patient_id)}
+                                    {getPatientAppointmentLabel(appointment)}
                                   </TableCell>
                                   <TableCell>
                                     {getDoctorName(appointment.doctor_id)}
@@ -945,7 +951,7 @@ export function Dashboard() {
                         <p className="text-xs text-gray-500">{appointment.type}</p>
                       </div>
                       <div>
-                        <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
+                        <p className="font-medium">{getPatientAppointmentLabel(appointment)}</p>
                       </div>
                     </div>
                     <Badge variant={
@@ -986,7 +992,7 @@ export function Dashboard() {
                           <p className="text-xs text-gray-500">{appointment.type}</p>
                         </div>
                         <div>
-                          <p className="font-medium">{getPatientName(appointment.patient_id)}</p>
+                          <p className="font-medium">{getPatientAppointmentLabel(appointment)}</p>
                         </div>
                       </div>
                       <Badge variant="default">confirmado</Badge>

@@ -59,6 +59,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from "@/utils/date";
+import { getAppointmentPersonLabel } from "@/utils/appointments";
 
 /* =========================
    Tipos / Schema / Helpers
@@ -304,10 +305,13 @@ export function FinancialModule() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const getNomePaciente = (id: string) =>
-    patients.find((p) => p.id === id)?.name || "Paciente";
   const getNomeMedico = (id: string) =>
     doctors.find((d) => d.id === id)?.name || "Médico";
+
+  const getAppointmentPatientLabel = (appointment: any) => {
+    const patient = patients.find((p) => p.id === appointment.patient_id);
+    return getAppointmentPersonLabel(appointment, patient);
+  };
 
   const appointmentOptions = useMemo(
     () =>
@@ -316,7 +320,7 @@ export function FinancialModule() {
         .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
         .map((a) => ({
           value: a.id,
-          label: `${formatDateTimeBR(`${a.date}T${a.time}`)} — ${getNomePaciente(a.patient_id)} • ${getNomeMedico(
+          label: `${formatDateTimeBR(`${a.date}T${a.time}`)} — ${getAppointmentPatientLabel(a)} • ${getNomeMedico(
             a.doctor_id
           )} • ${a.type}`,
         })),
@@ -324,6 +328,29 @@ export function FinancialModule() {
   );
 
   /* ---------- records filtrados / métricas ---------- */
+  const handleLinkAppointmentChange = (appointmentId: string) => {
+    setLinkAppointmentId(appointmentId);
+    if (appointmentId === "none") return;
+
+    const appointment = appointments.find((item) => item.id === appointmentId);
+    if (!appointment) return;
+
+    const patientLabel = getAppointmentPatientLabel(appointment);
+    const doctorName = getNomeMedico(appointment.doctor_id);
+    const kind = appointment.is_professional_meeting
+      ? "Reuniao com responsavel"
+      : "Consulta";
+
+    setValue("type", "receita");
+    setValue("amount", Number(appointment.price) || 0);
+    setValue("description", `${kind}: ${appointment.type} | ${patientLabel} | ${doctorName}`);
+    setValue("category", appointment.is_professional_meeting ? "Avaliacao" : "Consulta");
+    setValue("date", appointment.date || toInputDate(nowLocal()));
+    setValue("status", appointment.status === "cancelado" ? "cancelado" : "pendente");
+    setCreateDiscountValue(0);
+    setCreateFeeValue(0);
+  };
+
   const filtered = useMemo(() => {
     return financialRecords.filter((r) => {
       const pm = extractPaymentMethod(r.description || "");
@@ -797,7 +824,7 @@ const success = await addFinancialRecord(payload);
                     <Label>Vincular a um agendamento (opcional)</Label>
                     <Select
                       value={linkAppointmentId}
-                      onValueChange={(v) => setLinkAppointmentId(v)}
+                      onValueChange={handleLinkAppointmentChange}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione" />

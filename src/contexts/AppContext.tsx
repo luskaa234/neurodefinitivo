@@ -12,6 +12,12 @@ import { toast } from "sonner";
 import { sendPushNotification } from "@/lib/push";
 import { createWhatsAppMessage, type WhatsAppMessageType } from "@/lib/whatsapp";
 import { createInternalNotification } from "@/lib/notifications";
+import {
+  getAppointmentPersonLabel,
+  getAppointmentRecipientName,
+  getAppointmentServiceLabel,
+  isResponsibleMeeting,
+} from "@/utils/appointments";
 
 /* ======================================================
    TIPOS (ALINHADOS AO BANCO REAL)
@@ -32,6 +38,7 @@ export interface User {
   created_at: string;
   is_active: boolean;
   phone?: string;
+  responsavel?: string;
 }
 
 /* 🔥 STATUS REAL DO BANCO */
@@ -551,6 +558,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { patientsList, doctorsList, patientSummaries, doctorMessage };
   };
 
+  const buildResponsibleAppointmentMessages = (params: {
+    type: "create" | "update" | "cancel" | "reschedule";
+    appointment: Appointment;
+    previous?: Appointment | null;
+    patientIds: string[];
+    doctorIds: string[];
+  }) => {
+    const { type, appointment, previous, patientIds, doctorIds } = params;
+    const patientsList = getUsersByIds(patientIds);
+    const doctorsList = getUsersByIds(doctorIds);
+    const patientNames = patientsList.map((u) => u.name).join(", ");
+    const patientDisplayNames = patientsList
+      .map((u) => getAppointmentPersonLabel(appointment, u))
+      .join(", ");
+    const doctorNames = doctorsList.map((u) => u.name).join(", ");
+    const dateTime = formatDateTime(appointment.date, appointment.time);
+    const prevDateTime = previous
+      ? formatDateTime(previous.date, previous.time)
+      : "";
+    const dateLabel = formatDateOnly(appointment.date);
+    const timeLabel = normalizeTimeToHHMM(appointment.time);
+    const serviceLabel = getAppointmentServiceLabel(appointment);
+    const appointmentWord = isResponsibleMeeting(appointment)
+      ? "reuniao"
+      : "atendimento";
+
+    const patientMessageBase =
+      type === "cancel"
+        ? `Ola, bom dia, tudo bem?\n${patientNames} sua ${appointmentWord} agendada para o dia ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${doctorNames}) foi cancelada.`
+        : type === "reschedule"
+          ? `Ola, bom dia, tudo bem?\n${patientNames} sua ${appointmentWord} foi reagendada de ${prevDateTime || dateTime} para ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${doctorNames}).`
+          : `Ola, bom dia, tudo bem?\n${patientNames} voce tem ${appointmentWord} agendada para o dia ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${doctorNames}).\nPosso confirmar a presenca hoje?`;
+
+    const patientSummaries = patientsList.map((p) => ({
+      patientId: p.id,
+      message: patientMessageBase.replace(
+        patientNames,
+        getAppointmentRecipientName(appointment, p)
+      ),
+    }));
+
+    const doctorMessage =
+      type === "cancel"
+        ? `Ola, bom dia, tudo bem?\n${doctorNames} a ${appointmentWord} agendada para o dia ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${patientDisplayNames}) foi cancelada.`
+        : type === "reschedule"
+          ? `Ola, bom dia, tudo bem?\n${doctorNames} a ${appointmentWord} foi reagendada de ${prevDateTime || dateTime} para ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${patientDisplayNames}).`
+          : `Ola, bom dia, tudo bem?\n${doctorNames} voce tem ${appointmentWord} agendada para o dia ${dateLabel}, as ${timeLabel}, ${serviceLabel} (${patientDisplayNames}).`;
+
+    return { patientsList, doctorsList, patientSummaries, doctorMessage };
+  };
+
   const toWhatsappEventType = (type: "create" | "update" | "cancel" | "reschedule"): WhatsAppMessageType => {
     if (type === "create") return "appointment.created";
     if (type === "cancel") return "appointment.cancelled";
@@ -611,7 +669,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const { type, appointment, patientIds, doctorIds } = params;
     const { patientsList, doctorsList, patientSummaries, doctorMessage } =
-      buildAppointmentMessages(params);
+      buildResponsibleAppointmentMessages(params);
 
     const missing: string[] = [];
 
@@ -882,11 +940,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       coreLoaded = true;
       setLoading(false);
 
-      const [finRes, medRes, recRes] = await Promise.all([
+      const [patientProfilesRes, finRes, medRes, recRes] = await Promise.all([
+        supabase.from("patients").select("user_id,responsavel"),
         supabase.from("financial_records").select("*"),
         supabase.from("medical_records").select("*"),
         supabase.from("appointment_recurrences").select("*"),
       ]);
+
+      const usersWithResponsibles = (usersRes.data ?? []).map((item: any) => {
+        const patientProfile = (patientProfilesRes.data ?? []).find(
+          (profile: any) => profile.user_id === item.id
+        );
+        return patientProfile?.responsavel
+          ? { ...item, responsavel: patientProfile.responsavel }
+          : item;
+      });
+
+      if (!patientProfilesRes.error) {
+        setUsers(usersWithResponsibles);
+      } else {
+        console.warn("loadAll patients non-fatal:", patientProfilesRes.error.message);
+      }
 
       if (finRes.error) {
         console.warn("loadAll financial_records non-fatal:", finRes.error.message);
@@ -907,7 +981,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (typeof window !== "undefined") {
         const cachePayload = {
-          users: usersRes.data ?? [],
+          users: patientProfilesRes.error ? usersRes.data ?? [] : usersWithResponsibles,
           appointments: allAppointmentsRows ?? [],
           financialRecords: finRes.error ? [] : finRes.data ?? [],
           medicalRecords: medRes.error ? [] : medRes.data ?? [],
@@ -1478,20 +1552,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (!isRecurrenceOverride) {
         // cria registro financeiro pendente (inclui paciente/responsável)
-        const patientName = getUserById(base.patient_id)?.name || "Paciente";
+        const patient = getUserById(base.patient_id);
+        const patientName = patient?.name || "Paciente";
         const { data: patientRow } = await supabase
           .from("patients")
           .select("responsavel")
           .eq("user_id", base.patient_id)
           .maybeSingle();
-        const responsavel = patientRow?.responsavel ? ` | Responsável: ${patientRow.responsavel}` : "";
+        const responsibleName = patientRow?.responsavel || patient?.responsavel || "";
+        const subjectLabel = base.is_professional_meeting
+          ? "Reuniao com responsavel"
+          : "Consulta";
+        const responsibleLabel = responsibleName
+          ? ` | Responsavel: ${responsibleName}`
+          : "";
         const { error: financialInsertError } = await supabase
           .from("financial_records")
           .insert([
           {
             type: "receita",
             amount: Number(base.price) || 0,
-            description: `Consulta: ${base.type} | Paciente: ${patientName}${responsavel}`,
+            description: `${subjectLabel}: ${base.type} | Paciente: ${patientName}${responsibleLabel}`,
             category: "Consulta",
             date: base.date,
             appointment_id: apt.id,
@@ -1543,7 +1624,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         refreshAppointmentsInBackground();
         if (!isRecurrenceOverride) {
-          const { doctorsList, doctorMessage } = buildAppointmentMessages({
+          const { doctorsList, doctorMessage } = buildResponsibleAppointmentMessages({
             type: "create",
             appointment: apt as Appointment,
             patientIds,
@@ -1801,7 +1882,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
         sendPushNotification({ type, appointment: nextAppointment });
 
-        const { doctorsList, doctorMessage } = buildAppointmentMessages({
+        const { doctorsList, doctorMessage } = buildResponsibleAppointmentMessages({
           type,
           appointment: nextAppointment,
           previous,
@@ -1866,7 +1947,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       refreshAppointmentsInBackground();
       if (previous) {
-        const { doctorsList, doctorMessage } = buildAppointmentMessages({
+        const { doctorsList, doctorMessage } = buildResponsibleAppointmentMessages({
           type: "cancel",
           appointment: previous,
           previous,
@@ -1906,6 +1987,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         status: data.status,
         appointment_id: data.appointment_id ?? null,
       };
+
+      if (payload.appointment_id) {
+        const { data: existingRecord, error: existingError } = await supabase
+          .from("financial_records")
+          .select("id")
+          .eq("appointment_id", payload.appointment_id)
+          .maybeSingle();
+        if (existingError) throw existingError;
+
+        if (existingRecord?.id) {
+          const { error } = await supabase
+            .from("financial_records")
+            .update(payload)
+            .eq("id", existingRecord.id);
+          if (error) throw error;
+          refreshInBackground();
+          return true;
+        }
+      }
 
       const { error } = await supabase
         .from("financial_records")

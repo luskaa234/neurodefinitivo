@@ -19,6 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { formatDateBR, formatDateTimeBR, nowLocal, toInputDate } from '@/utils/date';
+import { getAppointmentPersonLabel, getAppointmentRecipientName } from '@/utils/appointments';
 
 const justificationSchema = z.object({
   appointment_id: z.string().min(1, 'Consulta é obrigatória'),
@@ -170,6 +171,16 @@ export function DoctorConsultations() {
     return patient ? patient.name : 'Paciente não encontrado';
   };
 
+  const getPatientAppointmentLabel = (appointment: any) => {
+    const patient = patients.find(p => p.id === appointment.patient_id);
+    return getAppointmentPersonLabel(appointment, patient);
+  };
+
+  const getAppointmentRecipientLabel = (appointment: any) => {
+    const patient = patients.find(p => p.id === appointment.patient_id);
+    return getAppointmentRecipientName(appointment, patient);
+  };
+
   const getPatientPhone = (patientId: string) => {
     const patient = patients.find(p => p.id === patientId);
     return patient?.phone || 'Não informado';
@@ -186,7 +197,7 @@ export function DoctorConsultations() {
   const filteredJustificationAppointments = justificationAppointments.filter((apt) => {
     const q = appointmentSearch.trim().toLowerCase();
     if (!q) return true;
-    const patientName = getPatientName(apt.patient_id).toLowerCase();
+    const patientName = getPatientAppointmentLabel(apt).toLowerCase();
     const dateLabel = formatDateBR(apt.date);
     const timeLabel = String(apt.time || "").toLowerCase();
     const typeLabel = String(apt.type || "").toLowerCase();
@@ -201,7 +212,7 @@ export function DoctorConsultations() {
   const filteredJustifications = justifications.filter((j) => {
     if (!justificationSearch.trim()) return true;
     const appointment = appointments.find((apt) => apt.id === j.appointment_id);
-    const patientName = appointment ? getPatientName(appointment.patient_id) : "";
+    const patientName = appointment ? getPatientAppointmentLabel(appointment) : "";
     const q = justificationSearch.trim().toLowerCase();
     return (
       patientName.toLowerCase().includes(q) ||
@@ -221,7 +232,7 @@ export function DoctorConsultations() {
       toast.error('Paciente sem telefone para WhatsApp.');
       return;
     }
-    const patientName = getPatientName(appointment.patient_id);
+    const patientName = getAppointmentRecipientLabel(appointment);
     const dateTime = `${formatDateBR(appointment.date)} às ${appointment.time}`;
     const serviceLabel = appointment.type ? `com ${appointment.type}` : "com atendimento";
     const doctorName = user?.name || "médico";
@@ -265,7 +276,7 @@ export function DoctorConsultations() {
             appointment_id: appointment.id,
             patient_id: appointment.patient_id,
             doctor_id: appointment.doctor_id,
-            patient_name: getPatientName(appointment.patient_id),
+            patient_name: getPatientAppointmentLabel(appointment),
             doctor_name: user?.name || 'Médico',
             date: formatDateBR(appointment.date),
             time: appointment.time,
@@ -343,7 +354,7 @@ export function DoctorConsultations() {
                   <SelectContent>
                     {filteredJustificationAppointments.map((appointment) => (
                       <SelectItem key={appointment.id} value={appointment.id}>
-                        {getPatientName(appointment.patient_id)} - {formatDateBR(appointment.date)} às {appointment.time}
+                        {getPatientAppointmentLabel(appointment)} - {formatDateBR(appointment.date)} às {appointment.time}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -536,7 +547,7 @@ export function DoctorConsultations() {
                     .map((appointment) => (
                     <TableRow key={appointment.id}>
                       <TableCell className="font-bold text-purple-600">{appointment.time}</TableCell>
-                      <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
+                      <TableCell className="font-medium">{getPatientAppointmentLabel(appointment)}</TableCell>
                       <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
                       <TableCell>{appointment.type}</TableCell>
                       <TableCell>
@@ -602,7 +613,7 @@ export function DoctorConsultations() {
                     <TableRow key={appointment.id}>
                       <TableCell>{formatDateBR(appointment.date)}</TableCell>
                       <TableCell className="font-bold text-blue-600">{appointment.time}</TableCell>
-                      <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
+                      <TableCell className="font-medium">{getPatientAppointmentLabel(appointment)}</TableCell>
                       <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
                       <TableCell>{appointment.type}</TableCell>
                       <TableCell>
@@ -657,7 +668,7 @@ export function DoctorConsultations() {
                     <TableRow key={appointment.id}>
                       <TableCell>{formatDateBR(appointment.date)}</TableCell>
                       <TableCell className="font-bold text-blue-600">{appointment.time}</TableCell>
-                      <TableCell className="font-medium">{getPatientName(appointment.patient_id)}</TableCell>
+                      <TableCell className="font-medium">{getPatientAppointmentLabel(appointment)}</TableCell>
                       <TableCell>{getPatientPhone(appointment.patient_id)}</TableCell>
                       <TableCell>{appointment.type}</TableCell>
                       <TableCell>
@@ -724,7 +735,7 @@ export function DoctorConsultations() {
                             }
                           </TableCell>
                           <TableCell className="font-medium">
-                            {appointment ? getPatientName(appointment.patient_id) : 'N/A'}
+                            {appointment ? getPatientAppointmentLabel(appointment) : 'N/A'}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{justification.reason}</Badge>

@@ -212,6 +212,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const SERVICES_KEY = "neuro-services-v1";
+  const PENDING_STATUS_START_DATE = "2026-07-10";
   const usersRef = React.useRef<User[]>([]);
   const appointmentsRef = React.useRef<Appointment[]>([]);
   const optimisticPendingRef = React.useRef<Map<string, number>>(new Map());
@@ -347,7 +348,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return [normalized];
   };
 
-  const forceAllAppointmentsToPending = async () => {
+  const forceAppointmentsFromStartDateToPending = async () => {
     const candidates = buildStatusCandidates("pendente");
     let lastError: any = null;
 
@@ -355,6 +356,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase
         .from("appointments")
         .update({ status: candidate })
+        .gte("date", PENDING_STATUS_START_DATE)
         .neq("status", candidate);
 
       if (!error) {
@@ -807,7 +809,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...apt,
           id: `${apt.id}::${nextDate}`,
           date: nextDate,
-          status: apt.status,
+          status: nextDate >= PENDING_STATUS_START_DATE ? "pendente" : apt.status,
           is_virtual: true,
           recurrence_source_id: apt.id,
           is_fixed: true,
@@ -1267,10 +1269,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return;
     if (loading) return;
 
-    const migrationKey = "force-all-pending-v2";
+    const migrationKey = "force-pending-from-2026-07-10-v1";
     if (localStorage.getItem(migrationKey) === "1") return;
-    // Migração destrutiva: só executa quando habilitada manualmente.
-    const enableMigrationKey = "force-all-pending-enabled";
+    // Migração de dados: só executa quando habilitada manualmente.
+    const enableMigrationKey = "force-pending-from-2026-07-10-enabled";
     if (localStorage.getItem(enableMigrationKey) !== "1") {
       localStorage.setItem(migrationKey, "1");
       return;
@@ -1278,13 +1280,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const run = async () => {
       try {
-        await forceAllAppointmentsToPending();
+        await forceAppointmentsFromStartDateToPending();
         localStorage.setItem(migrationKey, "1");
         await loadAll();
-        toast.success("Todos os agendamentos foram deixados como pendente.");
+        toast.success("Agendamentos de 10/07/2026 em diante foram deixados como pendente.");
       } catch (err: any) {
-        console.error("forceAllAppointmentsToPending:", err?.message || err);
-        toast.error(err?.message || "Erro ao deixar todos os agendamentos pendentes.");
+        console.error("forceAppointmentsFromStartDateToPending:", err?.message || err);
+        toast.error(err?.message || "Erro ao deixar os agendamentos pendentes.");
       }
     };
 

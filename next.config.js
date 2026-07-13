@@ -24,7 +24,9 @@ module.exports = withPWA({
   reactStrictMode: false,
 
   // ✅ resolve o erro do Turbopack
-  turbopack: {},
+  turbopack: {
+    root: __dirname,
+  },
 
   // ✅ isso NÃO pode mais ficar aqui no Next 16
   // eslint: { ignoreDuringBuilds: true }, ❌ removido

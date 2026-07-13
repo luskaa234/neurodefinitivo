@@ -46,12 +46,18 @@ import { formatDateLongBR, formatMonthBR } from "@/utils/date";
 /* ======================================================
    TIPOS
 ====================================================== */
-type UIStatus = "agendado" | "confirmado" | "realizado" | "cancelado";
+type UIStatus = "pendente" | "agendado" | "confirmado" | "realizado" | "cancelado";
 type DBStatus = "agendado" | "pendente" | "confirmado" | "realizado" | "cancelado";
 
-const toDbStatus = (s: UIStatus): DBStatus => (s === "agendado" ? "agendado" : s);
+const toDbStatus = (s: UIStatus): DBStatus => s;
 const toUiStatus = (s: DBStatus | string): UIStatus =>
-  s === "pendente" || s === "agendado" ? "agendado" : (s as UIStatus);
+  s === "pendente" ||
+  s === "agendado" ||
+  s === "confirmado" ||
+  s === "realizado" ||
+  s === "cancelado"
+    ? s
+    : "pendente";
 
 type AptLike = {
   id: string;
@@ -266,7 +272,7 @@ export default function ExcelScheduleGrid() {
     type: "",
     price: "",
     notes: "",
-    status: "agendado",
+    status: "pendente",
     is_fixed: false,
     is_professional_meeting: false,
   });
@@ -436,6 +442,7 @@ export default function ExcelScheduleGrid() {
     const todayList = filtered.filter((apt) => apt.date === summaryDate);
     const counts = {
       total: todayList.length,
+      pendente: 0,
       agendado: 0,
       confirmado: 0,
       realizado: 0,
@@ -520,21 +527,29 @@ export default function ExcelScheduleGrid() {
       const bg = hashColor(colorKey);
       const status = String(apt.status || "").toLowerCase();
       const statusLabel =
-        status === "confirmado"
+        status === "pendente"
+          ? "Pendente"
+          : status === "agendado"
+          ? "Agendado"
+          : status === "confirmado"
           ? "Confirmado"
           : status === "cancelado"
-            ? "Cancelado"
-            : status === "realizado"
-              ? "Realizado"
-              : "Pendente";
+          ? "Cancelado"
+          : status === "realizado"
+          ? "Realizado"
+          : "Pendente";
       const statusClass =
-        status === "confirmado"
+        status === "pendente"
+          ? "bg-amber-100 text-amber-800"
+          : status === "agendado"
+          ? "bg-indigo-100 text-indigo-800"
+          : status === "confirmado"
           ? "bg-emerald-100 text-emerald-800"
           : status === "cancelado"
-            ? "bg-rose-100 text-rose-800"
-            : status === "realizado"
-              ? "bg-sky-100 text-sky-800"
-              : "bg-amber-100 text-amber-800";
+          ? "bg-rose-100 text-rose-800"
+          : status === "realizado"
+          ? "bg-sky-100 text-sky-800"
+          : "bg-amber-100 text-amber-800";
 
       map.set(apt.id, {
         patientNames,
@@ -568,7 +583,7 @@ export default function ExcelScheduleGrid() {
       type: "",
       price: "",
       notes: "",
-      status: "agendado",
+      status: "pendente",
       is_fixed: false,
       is_professional_meeting: false,
       ...prefill,
@@ -1071,6 +1086,7 @@ export default function ExcelScheduleGrid() {
      UI
   ====================================================== */
   const statusOptions: Array<{ value: UIStatus; label: string }> = [
+    { value: "pendente", label: "Pendente" },
     { value: "agendado", label: "Agendado" },
     { value: "confirmado", label: "Confirmado" },
     { value: "realizado", label: "Realizado" },
@@ -1272,7 +1288,8 @@ export default function ExcelScheduleGrid() {
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
               <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-700">Total: {daySummary.total}</span>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">Agendado: {daySummary.agendado}</span>
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">Pendente: {daySummary.pendente}</span>
+              <span className="rounded-full bg-indigo-100 px-3 py-1 text-indigo-700">Agendado: {daySummary.agendado}</span>
               <span className="rounded-full bg-purple-100 px-3 py-1 text-purple-700">Confirmado: {daySummary.confirmado}</span>
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">Realizado: {daySummary.realizado}</span>
               <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">Cancelado: {daySummary.cancelado}</span>
@@ -1703,11 +1720,19 @@ export default function ExcelScheduleGrid() {
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <Button
                   type="button"
+                  variant={form.status === "pendente" ? "default" : "outline"}
+                  className="h-9"
+                  onClick={() => setForm((s) => ({ ...s, status: "pendente" }))}
+                >
+                  Pendente
+                </Button>
+                <Button
+                  type="button"
                   variant={form.status === "agendado" ? "default" : "outline"}
                   className="h-9"
                   onClick={() => setForm((s) => ({ ...s, status: "agendado" }))}
                 >
-                  Pendente
+                  Agendado
                 </Button>
                 <Button
                   type="button"
@@ -2135,11 +2160,19 @@ export default function ExcelScheduleGrid() {
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button
                     type="button"
+                    variant={form.status === "pendente" ? "default" : "outline"}
+                    className="h-9"
+                    onClick={() => setForm((s) => ({ ...s, status: "pendente" }))}
+                  >
+                    Pendente
+                  </Button>
+                  <Button
+                    type="button"
                     variant={form.status === "agendado" ? "default" : "outline"}
                     className="h-9"
                     onClick={() => setForm((s) => ({ ...s, status: "agendado" }))}
                   >
-                    Pendente
+                    Agendado
                   </Button>
                   <Button
                     type="button"

@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   doctor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date DATE NOT NULL,
   time TIME NOT NULL,
-  status VARCHAR(20) DEFAULT 'agendado' CHECK (status IN ('agendado', 'confirmado', 'cancelado', 'realizado')),
+  status VARCHAR(20) DEFAULT 'pendente' CHECK (status IN ('pendente', 'agendado', 'confirmado', 'cancelado', 'realizado')),
   type VARCHAR(100) NOT NULL,
   notes TEXT,
   price DECIMAL(10,2) NOT NULL,

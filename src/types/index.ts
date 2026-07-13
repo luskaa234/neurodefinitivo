@@ -38,7 +38,7 @@ export interface Appointment {
   doctor_id: string;
   date: string;
   time: string;
-  status: 'agendado' | 'confirmado' | 'cancelado' | 'realizado';
+  status: 'pendente' | 'agendado' | 'confirmado' | 'cancelado' | 'realizado';
   type: string;
   notes?: string;
   price: number;

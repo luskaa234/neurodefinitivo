@@ -7,10 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useApp } from "@/contexts/AppContext";
 import { formatDateBR, nowLocal } from "@/utils/date";
 
-type AppointmentStatus = "agendado" | "confirmado" | "realizado" | "cancelado" | "falta";
+type AppointmentStatus = "pendente" | "agendado" | "confirmado" | "realizado" | "cancelado" | "falta";
 
 const statusVariant: Record<AppointmentStatus, "default" | "secondary" | "outline" | "destructive"> = {
   confirmado: "default",
+  pendente: "secondary",
   agendado: "secondary",
   realizado: "outline",
   cancelado: "destructive",

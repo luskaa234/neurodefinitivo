@@ -324,10 +324,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const normalizeAppointmentStatusForDb = (
     status?: AppointmentStatus | string | null
   ): AppointmentStatus => {
-    if (!status || status === "pendente" || status === "agendado") {
+    if (!status) {
       return pendingStatusRef.current;
     }
     if (
+      status === "pendente" ||
+      status === "agendado" ||
       status === "confirmado" ||
       status === "realizado" ||
       status === "cancelado"

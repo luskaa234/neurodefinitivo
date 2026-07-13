@@ -196,6 +196,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       note.startsWith(RECURRENCE_INSTANCE_NOTE_PREFIX)
     );
   };
+  const buildRecurrenceInstanceNote = (
+    sourceId: string,
+    date: string,
+    notes?: string | null
+  ) => {
+    const publicNotes = String(notes || "").trim();
+    const marker = `${RECURRENCE_INSTANCE_NOTE_PREFIX}${JSON.stringify({
+      source_id: sourceId,
+      date,
+    })}`;
+    return publicNotes ? `${marker}\n${publicNotes}` : marker;
+  };
   const pendingStatusRef = React.useRef<"agendado" | "pendente">("agendado");
   const CACHE_KEY = "neuro-app-cache-v1";
   const [users, setUsers] = useState<User[]>([]);
@@ -811,7 +823,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...apt,
           id: `${apt.id}::${nextDate}`,
           date: nextDate,
-          status: nextDate >= PENDING_STATUS_START_DATE ? "pendente" : apt.status,
+          status:
+            nextDate >= PENDING_STATUS_START_DATE &&
+            (apt.status === "pendente" || apt.status === "agendado")
+              ? "pendente"
+              : apt.status,
           is_virtual: true,
           recurrence_source_id: apt.id,
           is_fixed: true,
@@ -1669,7 +1685,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           appointments.find((a) => a.id === sourceId) ||
           (target ? { ...target, id: sourceId } : null);
 
-        const sourceDate = dateFromVirtual || source?.date || target?.date || "";
+        const sourceDate =
+          (data as any)?.date || dateFromVirtual || source?.date || target?.date || "";
         const sourceTime = normalizeTimeToHHMM(source?.time || target?.time || "");
         const sourcePatientId = source?.patient_id || target?.patient_id || "";
         const sourceDoctorId = source?.doctor_id || target?.doctor_id || "";
@@ -1678,26 +1695,94 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           toast.error("Não foi possível identificar a ocorrência da recorrência.");
           return false;
         }
-        // Regra estável e não-destrutiva:
-        // editar ocorrência virtual altera o status/dados do agendamento base
-        // sem forçar data/hora da ocorrência virtual no registro base.
-        const {
-          date: _virtualDate,
-          time: _virtualTime,
-          ...safeData
-        } = (data as any) || {};
-        void _virtualDate;
-        void _virtualTime;
+        // Editar ocorrencia virtual cria uma ocorrencia real naquela data.
+        // Assim o status salvo aparece na grade e nao volta para pendente.
+        const safeData = ((data as any) || {}) as any;
+        const patientIds = uniq(
+          safeData.patient_ids ?? source?.patient_ids ?? target?.patient_ids ?? [sourcePatientId]
+        );
+        const doctorIds = uniq(
+          safeData.doctor_ids ?? source?.doctor_ids ?? target?.doctor_ids ?? [sourceDoctorId]
+        );
+        const primaryPatientId =
+          safeData.patient_id && patientIds.includes(safeData.patient_id)
+            ? safeData.patient_id
+            : patientIds[0] || sourcePatientId;
+        const primaryDoctorId =
+          safeData.doctor_id && doctorIds.includes(safeData.doctor_id)
+            ? safeData.doctor_id
+            : doctorIds[0] || sourceDoctorId;
 
-        return await updateAppointment(sourceId, {
-          ...safeData,
-          patient_id: sourcePatientId,
-          doctor_id: sourceDoctorId,
-          patient_ids:
-            (safeData as any).patient_ids ?? source?.patient_ids ?? [sourcePatientId],
-          doctor_ids:
-            (safeData as any).doctor_ids ?? source?.doctor_ids ?? [sourceDoctorId],
-        } as any);
+        const instanceBase = {
+          patient_id: primaryPatientId,
+          doctor_id: primaryDoctorId,
+          date: sourceDate,
+          time: normalizeTimeToHHMM(safeData.time || target?.time || sourceTime),
+          status: normalizeAppointmentStatusForDb(
+            safeData.status ?? target?.status ?? source?.status
+          ),
+          type: safeData.type ?? target?.type ?? source?.type ?? "",
+          notes: buildRecurrenceInstanceNote(sourceId, sourceDate, safeData.notes),
+          price:
+            safeData.price !== undefined
+              ? Number(safeData.price) || 0
+              : Number(target?.price ?? source?.price) || 0,
+          is_fixed: false,
+          is_professional_meeting:
+            safeData.is_professional_meeting ??
+            target?.is_professional_meeting ??
+            source?.is_professional_meeting ??
+            false,
+        };
+
+        if (!instanceBase.patient_id || !instanceBase.doctor_id) {
+          toast.error("Paciente e medico sao obrigatorios para salvar a ocorrencia.");
+          return false;
+        }
+
+        let inserted: any = null;
+        let insertError: any = null;
+        for (const candidate of buildStatusCandidates(instanceBase.status)) {
+          const { data: row, error } = await supabase
+            .from("appointments")
+            .insert([{ ...instanceBase, status: candidate }])
+            .select()
+            .single();
+
+          if (!error && row) {
+            inserted = row;
+            break;
+          }
+
+          insertError = error;
+          if (!isAppointmentStatusConstraintError(error)) break;
+        }
+
+        if (!inserted) throw insertError;
+
+        await trySyncAppointmentPatients(inserted.id, patientIds);
+        await trySyncAppointmentDoctors(inserted.id, doctorIds);
+
+        const optimistic = normalizeAppointment({
+          ...inserted,
+          appointment_patients: patientIds.map((patient_id) => ({ patient_id })),
+          appointment_doctors: doctorIds.map((doctor_id) => ({ doctor_id })),
+        });
+
+        optimisticPendingRef.current.set(optimistic.id, Date.now());
+        setAppointments((prev) => {
+          const base = prev.filter(
+            (item) => !item.is_virtual && !String(item.id || "").includes("::")
+          );
+          const nextBase = [
+            ...base.filter((item) => item.id !== optimistic.id),
+            optimistic,
+          ];
+          return expandWeeklyAppointments(nextBase);
+        });
+
+        refreshAppointmentsInBackground();
+        return true;
       }
       const previous = appointments.find((a) => a.id === id) || null;
       const patientIds = data.patient_ids

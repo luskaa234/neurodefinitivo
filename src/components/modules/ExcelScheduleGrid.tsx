@@ -691,6 +691,9 @@ export default function ExcelScheduleGrid() {
       setFilterStatus("all");
       setFilterDate("");
       setSearch("");
+      if (primaryDoctorId) {
+        setSelectedDoctorId(primaryDoctorId);
+      }
       if (isReschedule && selected?.id) {
         resolveSchedulerNotification(selected.id);
       }

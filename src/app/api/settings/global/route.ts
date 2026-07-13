@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const SETTINGS_ID = "global";
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { data, error } = await supabaseAdmin
       .from("app_settings")
       .select("id, data, updated_at")
@@ -23,6 +24,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const body = await req.json();
     const settings = body?.settings;
     if (!settings || typeof settings !== "object") {
